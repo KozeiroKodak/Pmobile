@@ -17,10 +17,11 @@
 // 5. Testar a leitura da tabela "materiais".
 // 6. Verificar TODOS os materiais existentes.
 // 7. Verificar possíveis problemas nos registros.
+// 8. Mostrar os problemas encontrados na tela.
 //
 // IMPORTANTE:
 //
-// O Supabase agora é o banco central do PMOBILE.
+// O Supabase é o banco central do PMOBILE.
 //
 // A importação dos materiais é realizada pelo
 // arquivo "importacao.js".
@@ -61,7 +62,7 @@ const SUPABASE_URL =
 // ============================================================
 
 const SUPABASE_PUBLISHABLE_KEY =
-    "sb_publishable_Ckh6ls7eIh_11wviwxMlCQ_25Oes0QF";
+    "sb_publishable_Ckh6ls7eIh_11wviMlCQ_25Oes0QF";
 
 
 
@@ -71,7 +72,7 @@ const SUPABASE_PUBLISHABLE_KEY =
 //
 // OBJETIVO:
 //
-// Criar ou atualizar uma mensagem visual na tela.
+// Criar ou atualizar uma mensagem visual fixa na tela.
 //
 // Isso é especialmente útil durante os testes pelo
 // celular, onde nem sempre temos acesso ao console
@@ -86,9 +87,9 @@ const SUPABASE_PUBLISHABLE_KEY =
 //
 // 🟢 Supabase inicializado com sucesso
 //
-// 🟡 Verificando materiais...
+// 🟡 Verificando todos os materiais...
 //
-// 🟢 Supabase OK! 92.735 materiais verificados
+// 🟢 Supabase OK! 92.735 materiais verificados sem erros.
 //
 // ============================================================
 
@@ -186,6 +187,277 @@ function mostrarStatusSupabase(mensagem) {
 
 
 // ============================================================
+// FUNÇÃO: mostrarErrosSupabase()
+// ============================================================
+//
+// OBJETIVO:
+//
+// Mostrar na tela os problemas encontrados durante
+// a verificação dos materiais.
+//
+// PARÂMETROS:
+//
+// erros
+//     Array contendo as mensagens dos problemas.
+//
+// totalEncontrado
+//     Quantidade total de materiais analisados.
+//
+// quantidadeErros
+//     Quantidade total de problemas encontrados.
+//
+// IMPORTANTE:
+//
+// Para evitar uma tela gigantesca, mostramos no máximo
+// os primeiros 20 problemas.
+//
+// Todos os problemas continuam sendo enviados para
+// o console do navegador.
+//
+// ============================================================
+
+function mostrarErrosSupabase(
+    erros,
+    totalEncontrado,
+    quantidadeErros
+) {
+
+    // ========================================================
+    // PROCURAR ÁREA DE RESULTADO
+    // ========================================================
+
+    let area =
+        document.getElementById(
+            "resultadoVerificacaoSupabase"
+        );
+
+
+    // ========================================================
+    // SE NÃO EXISTIR, CRIAR
+    // ========================================================
+
+    if (!area) {
+
+        area =
+            document.createElement(
+                "div"
+            );
+
+
+        area.id =
+            "resultadoVerificacaoSupabase";
+
+
+        // ====================================================
+        // APARÊNCIA
+        // ====================================================
+
+        area.style.position =
+            "fixed";
+
+        area.style.top =
+            "80px";
+
+        area.style.left =
+            "10px";
+
+        area.style.right =
+            "10px";
+
+        area.style.maxHeight =
+            "70vh";
+
+        area.style.overflowY =
+            "auto";
+
+        area.style.padding =
+            "15px";
+
+        area.style.background =
+            "#ffffff";
+
+        area.style.border =
+            "1px solid #999";
+
+        area.style.borderRadius =
+            "8px";
+
+        area.style.zIndex =
+            "9998";
+
+
+        // ====================================================
+        // ADICIONAR À PÁGINA
+        // ====================================================
+
+        document.body.appendChild(
+            area
+        );
+
+    }
+
+
+    // ========================================================
+    // INICIAR HTML
+    // ========================================================
+
+    let html = "";
+
+
+    html +=
+        "<h3>⚠️ Problemas encontrados</h3>";
+
+
+    html +=
+        "<p><strong>" +
+        totalEncontrado.toLocaleString(
+            "pt-BR"
+        ) +
+        "</strong> materiais verificados.</p>";
+
+
+    html +=
+        "<p><strong>" +
+        quantidadeErros.toLocaleString(
+            "pt-BR"
+        ) +
+        "</strong> problemas encontrados.</p>";
+
+
+    html +=
+        "<hr>";
+
+
+    // ========================================================
+    // VERIFICAR SE EXISTEM ERROS
+    // ========================================================
+
+    if (
+        erros.length === 0
+    ) {
+
+        html +=
+            "<p>🟢 Nenhum problema detalhado encontrado.</p>";
+
+    } else {
+
+        html +=
+            "<p><strong>Detalhes:</strong></p>";
+
+
+        html +=
+            "<ul>";
+
+
+        // ====================================================
+        // MOSTRAR NO MÁXIMO 20
+        // ====================================================
+
+        erros
+            .slice(
+                0,
+                20
+            )
+            .forEach(
+                erro => {
+
+                    html +=
+                        "<li>" +
+                        escaparHTML(
+                            erro
+                        ) +
+                        "</li>";
+
+                }
+            );
+
+
+        html +=
+            "</ul>";
+
+
+        // ====================================================
+        // AVISAR SE HOUVER MAIS DE 20
+        // ====================================================
+
+        if (
+            erros.length > 20
+        ) {
+
+            html +=
+                "<p>⚠️ Apenas os primeiros 20 problemas " +
+                "estão sendo exibidos.</p>";
+
+        }
+
+    }
+
+
+    // ========================================================
+    // INSERIR RESULTADO NA TELA
+    // ========================================================
+
+    area.innerHTML =
+        html;
+
+}
+
+
+
+// ============================================================
+// FUNÇÃO: escaparHTML()
+// ============================================================
+//
+// OBJETIVO:
+//
+// Evitar que informações vindas do banco sejam
+// interpretadas como HTML.
+//
+// Isso é importante porque os dados dos materiais
+// vêm diretamente do Supabase.
+//
+// PARÂMETRO:
+//
+// texto
+//     Texto que será exibido.
+//
+// RETORNO:
+//
+// Texto seguro para ser utilizado dentro de HTML.
+//
+// ============================================================
+
+function escaparHTML(texto) {
+
+    return String(
+        texto ?? ""
+    )
+        .replace(
+            /&/g,
+            "&amp;"
+        )
+        .replace(
+            /</g,
+            "&lt;"
+        )
+        .replace(
+            />/g,
+            "&gt;"
+        )
+        .replace(
+            /"/g,
+            "&quot;"
+        )
+        .replace(
+            /'/g,
+            "&#039;"
+        );
+
+}
+
+
+
+// ============================================================
 // INICIALIZAÇÃO DO CLIENTE SUPABASE
 // ============================================================
 //
@@ -199,12 +471,6 @@ function mostrarStatusSupabase(mensagem) {
 // window.clienteSupabase
 //
 // ficará disponível globalmente.
-//
-// Dessa forma outros arquivos podem fazer:
-//
-// window.clienteSupabase
-//     .from("materiais")
-//     ...
 //
 // ============================================================
 
@@ -250,12 +516,6 @@ if (!window.supabase) {
         // ====================================================
         // DISPONIBILIZAR GLOBALMENTE
         // ====================================================
-        //
-        // Outros arquivos do PMOBILE poderão utilizar:
-        //
-        // window.clienteSupabase
-        //
-        // ====================================================
 
         window.clienteSupabase =
             clienteSupabase;
@@ -284,7 +544,7 @@ if (!window.supabase) {
         // ====================================================
         //
         // Pequeno atraso para garantir que a página
-        // terminou de carregar antes de iniciar a consulta.
+        // terminou de carregar.
         //
         // ====================================================
 
@@ -322,19 +582,15 @@ if (!window.supabase) {
 //
 // OBJETIVO:
 //
-// Fazer uma VERIFICAÇÃO COMPLETA da tabela:
+// Fazer uma verificação completa da tabela:
 //
 //     public.materiais
 //
-// Diferentemente do teste antigo, esta função NÃO utiliza:
-//
-//     .limit(1)
-//
-// Portanto, ela verifica todos os registros.
+// A função verifica TODOS os registros disponíveis.
 //
 // ============================================================
 //
-// O QUE SERÁ VERIFICADO:
+// VERIFICAÇÕES:
 //
 // 1. Se o Supabase responde.
 // 2. Quantos materiais existem.
@@ -349,8 +605,8 @@ if (!window.supabase) {
 //
 // A consulta é realizada em lotes de 1.000 registros.
 //
-// Isso evita tentar carregar os 92.735 materiais
-// de uma única vez no celular.
+// Isso evita carregar os 92.735 materiais de uma
+// única vez no celular.
 //
 // ============================================================
 
@@ -371,17 +627,13 @@ async function testarLeituraSupabase() {
         // ====================================================
         // TAMANHO DO LOTE
         // ====================================================
-        //
-        // Cada consulta buscará no máximo 1.000 registros.
-        //
-        // ====================================================
 
         const tamanhoLote =
             1000;
 
 
         // ====================================================
-        // PRIMEIRO REGISTRO DO LOTE
+        // PRIMEIRO REGISTRO
         // ====================================================
 
         let inicio =
@@ -397,7 +649,7 @@ async function testarLeituraSupabase() {
 
 
         // ====================================================
-        // CONTADOR DE ERROS
+        // CONTADOR DE PROBLEMAS
         // ====================================================
 
         let quantidadeErros =
@@ -405,14 +657,7 @@ async function testarLeituraSupabase() {
 
 
         // ====================================================
-        // LISTA DE ERROS
-        // ====================================================
-        //
-        // Guardaremos aqui os problemas encontrados.
-        //
-        // No máximo os primeiros 20 serão exibidos
-        // visualmente ao usuário.
-        //
+        // LISTA DE PROBLEMAS
         // ====================================================
 
         const erros = [];
@@ -422,10 +667,7 @@ async function testarLeituraSupabase() {
         // CONTROLE DE CÓDIGOS
         // ====================================================
         //
-        // Set permite verificar rapidamente se um código
-        // já foi encontrado anteriormente.
-        //
-        // Isso será utilizado para procurar duplicidades.
+        // Utilizado para encontrar códigos duplicados.
         //
         // ====================================================
 
@@ -435,7 +677,7 @@ async function testarLeituraSupabase() {
 
 
         // ====================================================
-        // LOOP PRINCIPAL
+        // CONSULTAR TODOS OS LOTES
         // ====================================================
 
         while (true) {
@@ -508,8 +750,7 @@ async function testarLeituraSupabase() {
 
 
             // =================================================
-            // SE NÃO HOUVE RESULTADOS,
-            // A CONSULTA TERMINOU.
+            // NENHUM REGISTRO
             // =================================================
 
             if (
@@ -556,10 +797,6 @@ async function testarLeituraSupabase() {
                         );
 
                     } else {
-
-                        // =====================================
-                        // NORMALIZAR CÓDIGO
-                        // =====================================
 
                         const codigo =
                             String(
@@ -701,7 +938,7 @@ async function testarLeituraSupabase() {
 
 
             // =================================================
-            // VERIFICAR SE ESTE FOI O ÚLTIMO LOTE
+            // VERIFICAR SE FOI O ÚLTIMO LOTE
             // =================================================
 
             if (
@@ -715,7 +952,7 @@ async function testarLeituraSupabase() {
 
 
             // =================================================
-            // AVANÇAR PARA O PRÓXIMO LOTE
+            // PRÓXIMO LOTE
             // =================================================
 
             inicio +=
@@ -733,7 +970,7 @@ async function testarLeituraSupabase() {
 
 
         // ====================================================
-        // VERIFICAÇÃO TERMINADA
+        // VERIFICAÇÃO CONCLUÍDA
         // ====================================================
 
         console.log(
@@ -742,7 +979,7 @@ async function testarLeituraSupabase() {
 
 
         console.log(
-            "Total de materiais encontrados:",
+            "Total de materiais:",
             totalEncontrado
         );
 
@@ -754,7 +991,7 @@ async function testarLeituraSupabase() {
 
 
         console.log(
-            "Lista de problemas:",
+            "Problemas:",
             erros
         );
 
@@ -762,7 +999,7 @@ async function testarLeituraSupabase() {
 
         // ====================================================
         // CASO 1:
-        // NENHUM MATERIAL
+        // BANCO VAZIO
         // ====================================================
 
         if (
@@ -774,11 +1011,6 @@ async function testarLeituraSupabase() {
             );
 
 
-            console.warn(
-                "A tabela public.materiais não possui registros."
-            );
-
-
             return;
 
         }
@@ -787,7 +1019,7 @@ async function testarLeituraSupabase() {
 
         // ====================================================
         // CASO 2:
-        // TODOS OS MATERIAIS ESTÃO CORRETOS
+        // NENHUM PROBLEMA
         // ====================================================
 
         if (
@@ -804,7 +1036,7 @@ async function testarLeituraSupabase() {
 
 
             console.log(
-                "🟢 Nenhum problema encontrado nos materiais."
+                "🟢 Nenhum problema encontrado."
             );
 
 
@@ -816,7 +1048,7 @@ async function testarLeituraSupabase() {
 
         // ====================================================
         // CASO 3:
-        // FORAM ENCONTRADOS ERROS
+        // PROBLEMAS ENCONTRADOS
         // ====================================================
 
         mostrarStatusSupabase(
@@ -833,12 +1065,13 @@ async function testarLeituraSupabase() {
 
 
         // ====================================================
-        // MOSTRAR DETALHES NO CONSOLE
+        // MOSTRAR PROBLEMAS NA TELA
         // ====================================================
 
-        console.warn(
-            "⚠️ Problemas encontrados:",
-            erros
+        mostrarErrosSupabase(
+            erros,
+            totalEncontrado,
+            quantidadeErros
         );
 
 
@@ -874,10 +1107,6 @@ async function testarLeituraSupabase() {
 // a interface entre os lotes.
 //
 // Isso é importante principalmente no celular.
-//
-// Sem essa pausa, o navegador pode ficar ocupado
-// processando os lotes e demorar para atualizar
-// a mensagem de progresso.
 //
 // ============================================================
 
