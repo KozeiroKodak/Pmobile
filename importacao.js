@@ -17,22 +17,46 @@
 // 9. Remover a marca de "inventário zerado"
 //    somente após o salvamento bem-sucedido.
 //
-// TESTE SUPABASE:
+// SUPABASE:
 //
-// 10. Permitir enviar o inventário processado
-//     para a tabela "materiais" do Supabase.
+// 10. Enviar o inventário para a tabela
+//     "materiais" do Supabase.
+//
+// 11. Antes do envio, limpar o inventário anterior
+//     existente no Supabase.
+//
+// 12. Enviar os materiais em lotes de 500.
+//
+// 13. Impedir que duas importações para o Supabase
+//     sejam executadas simultaneamente.
 //
 // IMPORTANTE:
 //
-// O teste do Supabase é separado do funcionamento
-// normal do PMOBILE.
+// O IndexedDB continua funcionando normalmente.
 //
-// A importação continua salvando normalmente no
-// IndexedDB.
-//
-// O envio para o Supabase NÃO acontece automaticamente.
+// O Supabase passa a ser o banco central do PMOBILE.
 //
 // ====================================================
+
+
+// ====================================================
+// CONTROLE DE IMPORTAÇÃO SUPABASE
+// ====================================================
+//
+// Essa variável funciona como uma trava.
+//
+// Quando false:
+//     nenhuma importação para o Supabase está acontecendo.
+//
+// Quando true:
+//     uma importação está em andamento.
+//
+// Isso impede que o usuário clique duas vezes
+// no botão e envie o mesmo inventário novamente.
+//
+// ====================================================
+
+let importacaoSupabaseEmAndamento = false;
 
 
 // ====================================================
@@ -57,6 +81,7 @@ async function importarExcel() {
         document.getElementById(
             "arquivoExcel"
         );
+
 
     const resultado =
         document.getElementById(
@@ -117,6 +142,7 @@ async function importarExcel() {
     // ====================================================
 
     const limiteMB = 100;
+
 
     const limiteBytes =
         limiteMB *
@@ -208,7 +234,7 @@ async function importarExcel() {
 
 
         // ====================================================
-        // VARIÁVEIS DO PROCESSAMENTO
+        // VARIÁVEL DO INVENTÁRIO PROCESSADO
         // ====================================================
 
         let novoInventario = [];
@@ -295,7 +321,7 @@ async function importarExcel() {
         // ====================================================
 
         resultado.innerHTML =
-            "<p>⏳ Salvando inventário...</p>";
+            "<p>⏳ Salvando inventário local...</p>";
 
 
         try {
@@ -324,11 +350,12 @@ async function importarExcel() {
 
 
         // ====================================================
-        // MENSAGEM DE SUCESSO
+        // MENSAGEM ANTES DO SUPABASE
         // ====================================================
 
         resultado.innerHTML =
-            "<p>✅ Inventário importado com sucesso!</p>" +
+            "<p>✅ Inventário processado com sucesso!</p>" +
+
             "<p><strong>" +
             novoInventario.length.toLocaleString(
                 "pt-BR"
@@ -337,11 +364,24 @@ async function importarExcel() {
 
             "<br>" +
 
-            "<p>☁️ O inventário foi salvo localmente.</p>" +
+            "<p>💾 Inventário salvo localmente.</p>" +
 
-            "<button onclick=\"testarEnvioSupabase(materiais)\">" +
-            "🧪 Testar envio para Supabase" +
-            "</button>";
+            "<p>☁️ Preparando envio para o Supabase...</p>";
+
+
+        // ====================================================
+        // ENVIAR AUTOMATICAMENTE PARA O SUPABASE
+        // ====================================================
+        //
+        // Agora o Supabase faz parte da importação oficial.
+        //
+        // Não existe mais botão separado de teste.
+        //
+        // ====================================================
+
+        await importarParaSupabase(
+            materiais
+        );
 
 
         // ====================================================
@@ -349,7 +389,13 @@ async function importarExcel() {
         // ====================================================
 
         console.log(
-            "Importação concluída com sucesso."
+            "Importação completa concluída."
+        );
+
+
+        console.log(
+            "Materiais processados:",
+            novoInventario.length
         );
 
 
@@ -373,6 +419,7 @@ async function importarExcel() {
 
         resultado.innerHTML =
             "<p>❌ Erro durante a importação.</p>" +
+
             "<p>" +
             (
                 erro.message ||
@@ -386,29 +433,33 @@ async function importarExcel() {
 
 
 // ====================================================
-// FUNÇÃO: testarEnvioSupabase()
+// FUNÇÃO: importarParaSupabase()
 // ====================================================
 //
-// Envia o inventário processado para o Supabase.
+// Envia o inventário atual para o Supabase.
+//
+// FLUXO:
+//
+// 1. Verifica conexão.
+// 2. Verifica se já existe uma importação em andamento.
+// 3. Ativa a trava.
+// 4. Limpa a tabela materiais.
+// 5. Divide o inventário em lotes de 500.
+// 6. Envia cada lote.
+// 7. Atualiza o progresso.
+// 8. Libera a trava.
 //
 // IMPORTANTE:
 //
-// Esta função é SOMENTE um teste.
+// Essa função substitui a antiga:
 //
-// Ela NÃO substitui o IndexedDB.
+//     testarEnvioSupabase()
 //
-// Ela NÃO apaga dados existentes.
-//
-// Ela NÃO limpa a tabela materiais.
-//
-// Ela somente tenta inserir os materiais enviados.
-//
-// Os materiais são enviados em lotes para evitar
-// uma requisição gigantesca.
+// Agora o envio para o Supabase é definitivo.
 //
 // ====================================================
 
-async function testarEnvioSupabase(
+async function importarParaSupabase(
     inventario
 ) {
 
@@ -443,7 +494,9 @@ async function testarEnvioSupabase(
         resultado.innerHTML =
             "<p>🔴 Cliente Supabase não encontrado.</p>";
 
-        return;
+        throw new Error(
+            "Cliente Supabase não encontrado."
+        );
     }
 
 
@@ -457,23 +510,48 @@ async function testarEnvioSupabase(
     ) {
 
         resultado.innerHTML =
-            "<p>❌ Nenhum material disponível para teste.</p>";
+            "<p>❌ Nenhum material disponível para enviar.</p>";
+
+        throw new Error(
+            "Nenhum material disponível para enviar ao Supabase."
+        );
+    }
+
+
+    // ====================================================
+    // PROTEÇÃO CONTRA DUPLO CLIQUE
+    // ====================================================
+
+    if (
+        importacaoSupabaseEmAndamento
+    ) {
+
+        resultado.innerHTML =
+            "<p>⚠️ Já existe uma importação para o Supabase em andamento.</p>";
 
         return;
     }
 
 
     // ====================================================
+    // ATIVAR TRAVA
+    // ====================================================
+
+    importacaoSupabaseEmAndamento =
+        true;
+
+
+    // ====================================================
     // TAMANHO DOS LOTES
     // ====================================================
     //
-    // Cada requisição enviará 500 materiais.
+    // Cada requisição enviará até 500 materiais.
     //
     // Exemplo:
     //
-    // 92.708 materiais
+    // 92.735 materiais
     //
-    // aproximadamente 186 requisições.
+    // serão enviados em aproximadamente 186 lotes.
     //
     // ====================================================
 
@@ -486,21 +564,89 @@ async function testarEnvioSupabase(
 
     let enviados = 0;
 
+
     const total =
         inventario.length;
+
+
+    const quantidadeLotes =
+        Math.ceil(
+            total /
+            tamanhoLote
+        );
 
 
     try {
 
         // ====================================================
-        // DESABILITAR BOTÃO DURANTE O TESTE
+        // AVISAR QUE O SUPABASE SERÁ PREPARADO
         // ====================================================
 
         resultado.innerHTML =
-            "<p>☁️ Preparando envio para o Supabase...</p>" +
-            "<p>0 de " +
-            total.toLocaleString("pt-BR") +
-            " materiais enviados.</p>";
+            "<p>☁️ Preparando banco central...</p>" +
+
+            "<p>O inventário anterior será substituído.</p>" +
+
+            "<p>📦 " +
+            total.toLocaleString(
+                "pt-BR"
+            ) +
+            " materiais para importar.</p>";
+
+
+        // ====================================================
+        // LIMPAR INVENTÁRIO ANTERIOR
+        // ====================================================
+        //
+        // A importação representa um novo retrato
+        // do estoque vindo do DOGO.
+        //
+        // Portanto, removemos os materiais anteriores
+        // antes de gravar o novo inventário.
+        //
+        // ====================================================
+
+        const respostaLimpeza =
+            await window.clienteSupabase
+                .from("materiais")
+                .delete()
+                .not(
+                    "id",
+                    "is",
+                    null
+                );
+
+
+        // ====================================================
+        // VERIFICAR ERRO NA LIMPEZA
+        // ====================================================
+
+        if (
+            respostaLimpeza.error
+        ) {
+
+            throw new Error(
+                "Não foi possível limpar os materiais anteriores: " +
+                respostaLimpeza.error.message
+            );
+
+        }
+
+
+        // ====================================================
+        // CONFIRMAR LIMPEZA
+        // ====================================================
+
+        resultado.innerHTML =
+            "<p>🧹 Inventário anterior removido.</p>" +
+
+            "<p>☁️ Iniciando importação para o Supabase...</p>" +
+
+            "<p>0 de <strong>" +
+            total.toLocaleString(
+                "pt-BR"
+            ) +
+            "</strong> materiais enviados.</p>";
 
 
         // ====================================================
@@ -519,7 +665,8 @@ async function testarEnvioSupabase(
 
             const fim =
                 Math.min(
-                    inicio + tamanhoLote,
+                    inicio +
+                    tamanhoLote,
                     total
                 );
 
@@ -576,6 +723,17 @@ async function testarEnvioSupabase(
 
 
             // =================================================
+            // NÚMERO DO LOTE ATUAL
+            // =================================================
+
+            const numeroLote =
+                Math.floor(
+                    inicio /
+                    tamanhoLote
+                ) + 1;
+
+
+            // =================================================
             // ENVIAR LOTE
             // =================================================
 
@@ -597,12 +755,9 @@ async function testarEnvioSupabase(
 
                 throw new Error(
                     "Erro no lote " +
-                    (
-                        Math.floor(
-                            inicio /
-                            tamanhoLote
-                        ) + 1
-                    ) +
+                    numeroLote +
+                    " de " +
+                    quantidadeLotes +
                     ": " +
                     resposta.error.message
                 );
@@ -623,7 +778,7 @@ async function testarEnvioSupabase(
             // =================================================
 
             resultado.innerHTML =
-                "<p>☁️ Enviando materiais para o Supabase...</p>" +
+                "<p>☁️ Importando inventário para o Supabase...</p>" +
 
                 "<p><strong>" +
                 enviados.toLocaleString(
@@ -635,13 +790,10 @@ async function testarEnvioSupabase(
                 ) +
                 "</strong> materiais enviados.</p>" +
 
-                "<p>📦 Lote: " +
-                (
-                    Math.floor(
-                        inicio /
-                        tamanhoLote
-                    ) + 1
-                ) +
+                "<p>📦 Lote " +
+                numeroLote +
+                " de " +
+                quantidadeLotes +
                 "</p>";
 
 
@@ -659,28 +811,37 @@ async function testarEnvioSupabase(
         // ====================================================
 
         resultado.innerHTML =
-            "<p>🟢 <strong>Teste Supabase concluído!</strong></p>" +
+            "<p>🟢 <strong>Importação concluída com sucesso!</strong></p>" +
 
             "<p>" +
             enviados.toLocaleString(
                 "pt-BR"
             ) +
-            " materiais enviados com sucesso.</p>" +
+            " materiais foram gravados no Supabase.</p>" +
 
-            "<p>☁️ Os dados foram gravados na tabela " +
-            "<strong>materiais</strong> do Supabase.</p>" +
+            "<p>☁️ Banco central atualizado.</p>" +
 
-            "<p>📱 O IndexedDB do PMOBILE continua funcionando normalmente.</p>";
+            "<p>💾 O IndexedDB local também foi atualizado.</p>";
 
+
+        // ====================================================
+        // DIAGNÓSTICOS
+        // ====================================================
 
         console.log(
-            "Teste Supabase concluído."
+            "Importação Supabase concluída."
         );
 
 
         console.log(
             "Materiais enviados:",
             enviados
+        );
+
+
+        console.log(
+            "Quantidade de lotes:",
+            quantidadeLotes
         );
 
 
@@ -691,13 +852,13 @@ async function testarEnvioSupabase(
         // ====================================================
 
         console.error(
-            "Erro durante teste Supabase:",
+            "Erro durante importação Supabase:",
             erro
         );
 
 
         resultado.innerHTML =
-            "<p>🔴 <strong>Erro durante o teste Supabase.</strong></p>" +
+            "<p>🔴 <strong>Erro durante a importação para o Supabase.</strong></p>" +
 
             "<p>" +
             (
@@ -714,7 +875,33 @@ async function testarEnvioSupabase(
             total.toLocaleString(
                 "pt-BR"
             ) +
-            " materiais antes do erro.</p>";
+            " materiais.</p>" +
+
+            "<p>⚠️ O Supabase pode estar com um inventário parcial.</p>" +
+
+            "<p>💾 O IndexedDB local permanece disponível.</p>";
+
+
+        // ====================================================
+        // PROPAGAR ERRO
+        // ====================================================
+
+        throw erro;
+
+
+    } finally {
+
+        // ====================================================
+        // LIBERAR TRAVA
+        // ====================================================
+        //
+        // Mesmo que ocorra erro, a trava precisa
+        // ser liberada.
+        //
+        // ====================================================
+
+        importacaoSupabaseEmAndamento =
+            false;
 
     }
 
