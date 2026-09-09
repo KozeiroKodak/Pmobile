@@ -1,68 +1,57 @@
-// ====================================================
+// ============================================================
+// PMOBILE
 // IMPORTAÇÃO DE INVENTÁRIO
-// ====================================================
+// ============================================================
 //
 // Responsável por:
 //
-// 1. Receber o arquivo selecionado pelo usuário.
-// 2. Verificar o limite máximo de 100 MB.
-// 3. Detectar o formato real do arquivo.
-// 4. Aceitar:
-//      - Excel verdadeiro (.xls / .xlsx)
-//      - .xls do DOGO que contém HTML
-// 5. Ler e validar as colunas obrigatórias.
-// 6. Transformar os dados em materiais do PMOBILE.
-// 7. Calcular a quantidade disponível.
-// 8. Salvar o novo inventário no IndexedDB.
-// 9. Remover a marca de "inventário zerado"
-//    somente após o salvamento bem-sucedido.
+// 1. Receber o arquivo selecionado.
+// 2. Validar o tamanho.
+// 3. Detectar o formato real.
+// 4. Processar HTML do DOGO.
+// 5. Processar Excel verdadeiro.
+// 6. Validar os registros ANTES da conversão.
+// 7. Classificar:
+//      🟢 OK
+//      🟡 OBSERVAÇÃO
+//      🔴 ERRO
+// 8. Criar o inventário do PMOBILE.
+// 9. Salvar no IndexedDB.
+// 10. Enviar automaticamente para o Supabase.
+// 11. Substituir o inventário anterior no Supabase.
+// 12. Enviar em lotes.
+// 13. Impedir importações simultâneas.
 //
-// SUPABASE:
-//
-// 10. Enviar o inventário para a tabela
-//     "materiais" do Supabase.
-//
-// 11. Antes do envio, limpar o inventário anterior
-//     existente no Supabase.
-//
-// 12. Enviar os materiais em lotes de 500.
-//
-// 13. Impedir que duas importações para o Supabase
-//     sejam executadas simultaneamente.
-//
-// IMPORTANTE:
-//
-// O IndexedDB continua funcionando normalmente.
-//
-// O Supabase passa a ser o banco central do PMOBILE.
-//
-// ====================================================
+// ============================================================
+
+
+// ============================================================
+// CONFIGURAÇÕES
+// ============================================================
+
+const LIMITE_ARQUIVO_MB = 100;
+const TAMANHO_LOTE_SUPABASE = 500;
+
+
+// ============================================================
 // CONTROLE DE IMPORTAÇÃO SUPABASE
-// ====================================================
+// ============================================================
 //
-// Essa variável funciona como uma trava.
+// Impede que o usuário clique duas vezes e envie
+// o mesmo inventário simultaneamente.
 //
-// Quando false:
-//     nenhuma importação para o Supabase está acontecendo.
-//
-// Quando true:
-//     uma importação está em andamento.
-//
-// Isso impede que o usuário clique duas vezes
-// no botão e envie o mesmo inventário novamente.
-//
-// ====================================================
+// ============================================================
+
 let importacaoSupabaseEmAndamento = false;
-// ====================================================
+
+
+// ============================================================
 // DIAGNÓSTICO DA IMPORTAÇÃO
-// ====================================================
+// ============================================================
 //
-// Guarda as informações encontradas durante a leitura
-// da planilha.
+// Guarda o resultado da análise de TODOS os registros.
 //
-// Essas informações pertencem somente à importação atual.
-//
-// ====================================================
+// ============================================================
 
 let diagnosticoImportacao = {
     total: 0,
@@ -71,613 +60,1986 @@ let diagnosticoImportacao = {
     erros: [],
     codigosEncontrados: new Map()
 };
-// ====================================================
+
+
+// ============================================================
 // FUNÇÃO: iniciarDiagnosticoImportacao()
-// ====================================================
+// ============================================================
 //
-// OBJETIVO:
+// Limpa o diagnóstico anterior.
 //
-// Limpar o diagnóstico anterior e iniciar uma nova
-// análise para a planilha atual.
+// Deve ser chamada no início de cada importação.
 //
-// Essa função deve ser chamada uma vez no início
-// de cada importação.
-//
-// ====================================================
+// ============================================================
+
 function iniciarDiagnosticoImportacao() {
+
     diagnosticoImportacao = {
+
         total: 0,
+
         ok: 0,
+
         observacoes: [],
+
         erros: [],
-        codigosEncontrados:
-            new Map()
+
+        codigosEncontrados: new Map()
+
     };
+
 }
-// ====================================================
+
+
+// ============================================================
+// FUNÇÃO: valorVazio()
+// ============================================================
+//
+// Verifica se um valor está vazio.
+//
+// Considera vazio:
+// - null
+// - undefined
+// - ""
+// - espaços
+//
+// ============================================================
+
+function valorVazio(valor) {
+
+    return (
+        valor === null ||
+        valor === undefined ||
+        String(valor).trim() === ""
+    );
+
+}
+
+
+// ============================================================
+// FUNÇÃO: numeroValidoOriginal()
+// ============================================================
+//
+// Verifica o valor ORIGINAL da planilha.
+//
+// IMPORTANTE:
+//
+// Esta função acontece ANTES de converter o número.
+//
+// Assim conseguimos diferenciar:
+//
+// ""       → vazio
+// "0"      → válido
+// "10"     → válido
+// "10,50"  → válido
+// "ABC"    → erro
+//
+// ============================================================
+
+function numeroValidoOriginal(valor) {
+
+    if (valorVazio(valor)) {
+
+        return {
+            valido: true,
+            vazio: true
+        };
+
+    }
+
+    if (typeof valor === "number") {
+
+        return {
+            valido: Number.isFinite(valor),
+            vazio: false
+        };
+
+    }
+
+    let texto = String(valor).trim();
+
+    texto = texto.replace(/\s/g, "");
+
+    // Formatos aceitos:
+    //
+    // 10
+    // 10.5
+    // 10,5
+    // 1.000
+    // 1.000,50
+    // 1000.50
+
+    const formatoNumero =
+        /^[+-]?\d+(?:[.,]\d+)?$/;
+
+    const formatoMilhar =
+        /^[+-]?\d{1,3}(?:\.\d{3})+(?:,\d+)?$/;
+
+    if (
+        formatoNumero.test(texto) ||
+        formatoMilhar.test(texto)
+    ) {
+
+        return {
+            valido: true,
+            vazio: false
+        };
+
+    }
+
+    return {
+        valido: false,
+        vazio: false
+    };
+
+}
+
+
+// ============================================================
 // FUNÇÃO: analisarMaterialImportado()
-// ====================================================
+// ============================================================
 //
-// OBJETIVO:
+// Analisa o registro ANTES de criar o material definitivo.
 //
-// Analisar cada material que foi convertido da
-// planilha para o formato do PMOBILE.
-//
-// CLASSIFICAÇÃO:
+// Classificação:
 //
 // 🟢 OK
 // Registro sem problemas.
 //
 // 🟡 OBSERVAÇÃO
-// Registro utilizável, mas com informações incompletas.
+// Informação ausente, mas que não impede o material
+// de ser utilizado.
 //
 // 🔴 ERRO
-// Registro com alguma inconsistência que merece
-// investigação.
+// Informação inválida ou inconsistente.
 //
-// IMPORTANTE:
+// Regras atuais:
 //
-// Nesta primeira versão, a classificação NÃO impede
-// a importação.
+// Código vazio              → observação
+// Descrição vazia           → observação
+// Referência vazia          → observação
+// Marca vazia               → observação
+// Local vazio               → observação
+// Última Entrada vazia      → observação
 //
-// Estamos apenas identificando os casos existentes.
+// Qtde. Est. inválida       → erro
+// Qtde. Rsr. inválida       → erro
+// Código duplicado          → erro
 //
-// ====================================================
+// ============================================================
+
 function analisarMaterialImportado(
-    material,
+    linha,
     numeroRegistro
 ) {
+
     diagnosticoImportacao.total++;
-    let possuiObservacao =
-        false;
-    let possuiErro =
-        false;
-    // ====================================================
-    // CÓDIGO VAZIO
-    // ====================================================
-    if (
-        !material.codigo ||
-        String(
-            material.codigo
-        ).trim() === ""
-    ) {
+
+    let possuiObservacao = false;
+    let possuiErro = false;
+
+
+    // ========================================================
+    // CÓDIGO
+    // ========================================================
+
+    const codigo =
+        linha.Produto ??
+        linha.produto ??
+        linha.Codigo ??
+        linha.codigo ??
+        "";
+
+    if (valorVazio(codigo)) {
+
         possuiObservacao = true;
-        diagnosticoImportacao.observacoes.push(
-            "Registro " +
-            numeroRegistro +
-            ": código vazio."
-        );
-    } else {
-        const codigo =
-            String(
-                material.codigo
-            ).trim();
-        // ================================================
-        // VERIFICAR CÓDIGO DUPLICADO
-        // ================================================
+
+        diagnosticoImportacao.observacoes.push({
+
+            registro: numeroRegistro,
+
+            campo: "Produto",
+
+            mensagem: "Código do produto vazio."
+
+        });
+
+    }
+    else {
+
+        const codigoTexto =
+            String(codigo).trim();
+
         if (
-            diagnosticoImportacao.codigosEncontrados.has(
-                codigo
-            )
+            diagnosticoImportacao
+                .codigosEncontrados
+                .has(codigoTexto)
         ) {
+
+            possuiErro = true;
+
             const registroAnterior =
                 diagnosticoImportacao
                     .codigosEncontrados
-                    .get(
-                        codigo
-                    );
-            possuiErro = true;
-            diagnosticoImportacao.erros.push(
-                "Registro " +
-                numeroRegistro +
-                ": código " +
-                codigo +
-                " duplicado. " +
-                "Também aparece no registro " +
-                registroAnterior +
-                "."
-            );
-        } else {
+                    .get(codigoTexto);
+
+            diagnosticoImportacao.erros.push({
+
+                registro: numeroRegistro,
+
+                campo: "Produto",
+
+                mensagem:
+                    "Código duplicado. " +
+                    "Também aparece no registro " +
+                    registroAnterior +
+                    "."
+
+            });
+
+        }
+        else {
+
             diagnosticoImportacao
                 .codigosEncontrados
                 .set(
-                    codigo,
+                    codigoTexto,
                     numeroRegistro
                 );
+
         }
+
     }
-    // ====================================================
-    // DESCRIÇÃO VAZIA
-    // ====================================================
-    if (
-        !material.descricao ||
-        String(
-            material.descricao
-        ).trim() === ""
-    ) {
+
+
+    // ========================================================
+    // DESCRIÇÃO
+    // ========================================================
+
+    const descricao =
+        linha.Descricao ??
+        linha.descricao ??
+        linha.Descrição ??
+        linha.descrição ??
+        "";
+
+    if (valorVazio(descricao)) {
+
         possuiObservacao = true;
-        diagnosticoImportacao.observacoes.push(
-            "Registro " +
-            numeroRegistro +
-            ": descrição vazia."
-        );
+
+        diagnosticoImportacao.observacoes.push({
+
+            registro: numeroRegistro,
+
+            campo: "Descricao",
+
+            mensagem: "Descrição vazia."
+
+        });
+
     }
-    // ====================================================
-    // REFERÊNCIA VAZIA
-    // ====================================================
-    if (
-        !material.referencia ||
-        String(
-            material.referencia
-        ).trim() === ""
-    ) {
+
+
+    // ========================================================
+    // REFERÊNCIA
+    // ========================================================
+
+    const referencia =
+        linha.Referencia ??
+        linha.referencia ??
+        linha.Referência ??
+        linha.referência ??
+        "";
+
+    if (valorVazio(referencia)) {
+
         possuiObservacao = true;
-        diagnosticoImportacao.observacoes.push(
-            "Registro " +
-            numeroRegistro +
-            ": referência vazia."
-        );
+
+        diagnosticoImportacao.observacoes.push({
+
+            registro: numeroRegistro,
+
+            campo: "Referencia",
+
+            mensagem: "Referência vazia."
+
+        });
+
     }
-    // ====================================================
-    // MARCA VAZIA
-    // ====================================================
-    if (
-        !material.marca ||
-        String(
-            material.marca
-        ).trim() === ""
-    ) {
+
+
+    // ========================================================
+    // MARCA
+    // ========================================================
+
+    const marca =
+        linha.Marca ??
+        linha.marca ??
+        "";
+
+    if (valorVazio(marca)) {
+
         possuiObservacao = true;
-        diagnosticoImportacao.observacoes.push(
-            "Registro " +
-            numeroRegistro +
-            ": marca vazia."
-        );
+
+        diagnosticoImportacao.observacoes.push({
+
+            registro: numeroRegistro,
+
+            campo: "Marca",
+
+            mensagem: "Marca vazia."
+
+        });
+
     }
-    // ====================================================
-    // LOCAL VAZIO
-    // ====================================================
-    if (
-        !material.local ||
-        String(
-            material.local
-        ).trim() === ""
-    ) {
+
+
+    // ========================================================
+    // LOCAL
+    // ========================================================
+
+    const local =
+        linha.Local ??
+        linha.local ??
+        "";
+
+    if (valorVazio(local)) {
+
         possuiObservacao = true;
-        diagnosticoImportacao.observacoes.push(
-            "Registro " +
-            numeroRegistro +
-            ": local vazio."
-        );
+
+        diagnosticoImportacao.observacoes.push({
+
+            registro: numeroRegistro,
+
+            campo: "Local",
+
+            mensagem: "Local vazio."
+
+        });
+
     }
-    // ====================================================
-    // QUANTIDADE INVÁLIDA
-    // ====================================================
-    if (
-        typeof material.quantidade !== "number" ||
-        !Number.isFinite(
-            material.quantidade
-        )
-    ) {
+
+
+    // ========================================================
+    // ÚLTIMA ENTRADA
+    // ========================================================
+
+    const ultimaEntrada =
+        linha["Ultima Entrada"] ??
+        linha["Última Entrada"] ??
+        linha.ultimaEntrada ??
+        "";
+
+    if (valorVazio(ultimaEntrada)) {
+
+        possuiObservacao = true;
+
+        diagnosticoImportacao.observacoes.push({
+
+            registro: numeroRegistro,
+
+            campo: "Ultima Entrada",
+
+            mensagem: "Data da última entrada vazia."
+
+        });
+
+    }
+
+
+    // ========================================================
+    // QUANTIDADE ESTIMADA
+    // ========================================================
+
+    const quantidade =
+        linha["Qtde. Est."] ??
+        linha["Qtde Est."] ??
+        linha.quantidade ??
+        "";
+
+    const quantidadeValida =
+        numeroValidoOriginal(
+            quantidade
+        );
+
+    if (!quantidadeValida.valido) {
+
         possuiErro = true;
-        diagnosticoImportacao.erros.push(
-            "Registro " +
-            numeroRegistro +
-            ": quantidade inválida."
-        );
+
+        diagnosticoImportacao.erros.push({
+
+            registro: numeroRegistro,
+
+            campo: "Qtde. Est.",
+
+            mensagem:
+                "Quantidade estimada inválida: " +
+                String(quantidade)
+
+        });
+
     }
-    // ====================================================
-    // QUANTIDADE RESERVADA INVÁLIDA
-    // ====================================================
-    if (
-        typeof material.quantidadeReservada !== "number" ||
-        !Number.isFinite(
-            material.quantidadeReservada
-        )
-    ) {
+
+
+    // ========================================================
+    // QUANTIDADE RESERVADA
+    // ========================================================
+
+    const quantidadeReservada =
+        linha["Qtde. Rsr."] ??
+        linha["Qtde Rsr."] ??
+        linha.quantidadeReservada ??
+        "";
+
+    const reservadaValida =
+        numeroValidoOriginal(
+            quantidadeReservada
+        );
+
+    if (!reservadaValida.valido) {
+
         possuiErro = true;
-        diagnosticoImportacao.erros.push(
-            "Registro " +
-            numeroRegistro +
-            ": quantidade reservada inválida."
-        );
+
+        diagnosticoImportacao.erros.push({
+
+            registro: numeroRegistro,
+
+            campo: "Qtde. Rsr.",
+
+            mensagem:
+                "Quantidade reservada inválida: " +
+                String(quantidadeReservada)
+
+        });
+
     }
-    // ====================================================
-    // CLASSIFICAÇÃO FINAL
-    // ====================================================
-    if (
-        possuiErro
-    ) {
-        return;
+
+
+    // ========================================================
+    // CLASSIFICAÇÃO FINAL DO REGISTRO
+    // ========================================================
+
+    if (possuiErro) {
+
+        return "ERRO";
+
     }
-    if (
-        possuiObservacao
-    ) {
-        return;
+
+    if (possuiObservacao) {
+
+        return "OBSERVACAO";
+
     }
+
     diagnosticoImportacao.ok++;
+
+    return "OK";
+
 }
-// ====================================================
-// FUNÇÃO: importarExcel()
-// ====================================================
+
+
+// ============================================================
+// FUNÇÃO: converterNumero()
+// ============================================================
 //
-// Função principal da importação.
+// Converte números provenientes da planilha.
 //
-// É chamada pelo botão da tela de Importação:
+// Aceita:
 //
-//     <button onclick="importarExcel()">
+// 10
+// "10"
+// "10,50"
+// "10.50"
+// "1.000,50"
 //
-// ====================================================
-async function importarExcel() {
-    iniciarDiagnosticoImportacao();
+// Valores vazios retornam 0.
+//
+// ============================================================
+
+function converterNumero(valor) {
+
+    if (
+        valor === null ||
+        valor === undefined ||
+        String(valor).trim() === ""
+    ) {
+
+        return 0;
+
+    }
+
+
+    if (typeof valor === "number") {
+
+        return Number.isFinite(valor)
+            ? valor
+            : 0;
+
+    }
+
+
+    let texto =
+        String(valor)
+            .trim()
+            .replace(/\s/g, "");
+
+
+    // Formato brasileiro:
     //
-    // ====================================================
-    // LOCALIZAR ELEMENTOS DA TELA
-    // ====================================================
-    const input =
-        document.getElementById(
-            "arquivoExcel"
+    // 1.234,56
+    //
+
+    if (
+        texto.includes(".") &&
+        texto.includes(",")
+    ) {
+
+        texto =
+            texto
+                .replace(/\./g, "")
+                .replace(",", ".");
+
+    }
+
+    // Apenas vírgula:
+    //
+    // 10,50
+    //
+
+    else if (
+        texto.includes(",")
+    ) {
+
+        texto =
+            texto.replace(",", ".");
+
+    }
+
+
+    const numero =
+        Number(texto);
+
+    return Number.isFinite(numero)
+        ? numero
+        : 0;
+
+}
+
+
+// ============================================================
+// FUNÇÃO: criarMaterial()
+// ============================================================
+//
+// Transforma uma linha da planilha no formato usado pelo
+// PMOBILE.
+//
+// ============================================================
+
+function criarMaterial(linha) {
+
+    const codigo =
+        linha.Produto ??
+        linha.produto ??
+        linha.Codigo ??
+        linha.codigo ??
+        "";
+
+    const descricao =
+        linha.Descricao ??
+        linha.descricao ??
+        linha.Descrição ??
+        linha.descrição ??
+        "";
+
+    const referencia =
+        linha.Referencia ??
+        linha.referencia ??
+        linha.Referência ??
+        linha.referência ??
+        "";
+
+    const marca =
+        linha.Marca ??
+        linha.marca ??
+        "";
+
+    const local =
+        linha.Local ??
+        linha.local ??
+        "";
+
+    const quantidade =
+        converterNumero(
+            linha["Qtde. Est."] ??
+            linha["Qtde Est."] ??
+            linha.quantidade
         );
+
+    const quantidadeReservada =
+        converterNumero(
+            linha["Qtde. Rsr."] ??
+            linha["Qtde Rsr."] ??
+            linha.quantidadeReservada
+        );
+
+    const disponivel =
+        quantidade -
+        quantidadeReservada;
+
+    const ultimaEntrada =
+        linha["Ultima Entrada"] ??
+        linha["Última Entrada"] ??
+        linha.ultimaEntrada ??
+        "";
+
+
+    return {
+
+        codigo:
+            valorVazio(codigo)
+                ? ""
+                : String(codigo).trim(),
+
+        descricao:
+            valorVazio(descricao)
+                ? ""
+                : String(descricao).trim(),
+
+        referencia:
+            valorVazio(referencia)
+                ? null
+                : String(referencia).trim(),
+
+        marca:
+            valorVazio(marca)
+                ? null
+                : String(marca).trim(),
+
+        local:
+            valorVazio(local)
+                ? null
+                : String(local).trim(),
+
+        quantidade,
+
+        quantidadeReservada,
+
+        disponivel,
+
+        ultimaEntrada:
+            valorVazio(ultimaEntrada)
+                ? null
+                : String(ultimaEntrada).trim()
+
+    };
+
+}
+
+
+// ============================================================
+// FUNÇÃO: atualizarDiagnosticoTela()
+// ============================================================
+//
+// Mostra o resumo do diagnóstico na tela.
+//
+// ============================================================
+
+function atualizarDiagnosticoTela() {
+
     const resultado =
         document.getElementById(
             "resultadoImportacao"
         );
-    // ====================================================
-    // VERIFICAR SE O ELEMENTO EXISTE
-    // ====================================================
+
+    if (!resultado) {
+
+        return;
+
+    }
+
+
+    const total =
+        diagnosticoImportacao.total;
+
+    const ok =
+        diagnosticoImportacao.ok;
+
+    const observacoes =
+        diagnosticoImportacao.observacoes.length;
+
+    const erros =
+        diagnosticoImportacao.erros.length;
+
+
+    resultado.innerHTML +=
+
+        "<hr>" +
+
+        "<h3>🔎 Diagnóstico da importação</h3>" +
+
+        "<p>📦 Total de registros analisados: <strong>" +
+        total.toLocaleString("pt-BR") +
+        "</strong></p>" +
+
+        "<p>🟢 Registros OK: <strong>" +
+        ok.toLocaleString("pt-BR") +
+        "</strong></p>" +
+
+        "<p>🟡 Observações: <strong>" +
+        observacoes.toLocaleString("pt-BR") +
+        "</strong></p>" +
+
+        "<p>🔴 Erros: <strong>" +
+        erros.toLocaleString("pt-BR") +
+        "</strong></p>";
+
+
+    // ========================================================
+    // OBSERVAÇÕES
+    // ========================================================
+
+    if (observacoes > 0) {
+
+        resultado.innerHTML +=
+
+            "<details>" +
+
+            "<summary>🟡 Ver observações</summary>" +
+
+            "<ul>";
+
+        diagnosticoImportacao
+            .observacoes
+            .slice(0, 200)
+            .forEach(
+                observacao => {
+
+                    resultado.innerHTML +=
+
+                        "<li>" +
+
+                        "Registro " +
+                        observacao.registro +
+                        " — " +
+
+                        observacao.campo +
+                        ": " +
+
+                        observacao.mensagem +
+
+                        "</li>";
+
+                }
+            );
+
+        if (observacoes > 200) {
+
+            resultado.innerHTML +=
+
+                "<li><em>" +
+                "Exibindo apenas as primeiras 200 observações." +
+                "</em></li>";
+
+        }
+
+        resultado.innerHTML +=
+
+            "</ul>" +
+
+            "</details>";
+
+    }
+
+
+    // ========================================================
+    // ERROS
+    // ========================================================
+
+    if (erros > 0) {
+
+        resultado.innerHTML +=
+
+            "<details open>" +
+
+            "<summary>🔴 Ver erros</summary>" +
+
+            "<ul>";
+
+        diagnosticoImportacao
+            .erros
+            .slice(0, 200)
+            .forEach(
+                erro => {
+
+                    resultado.innerHTML +=
+
+                        "<li>" +
+
+                        "Registro " +
+                        erro.registro +
+                        " — " +
+
+                        erro.campo +
+                        ": " +
+
+                        erro.mensagem +
+
+                        "</li>";
+
+                }
+            );
+
+        if (erros > 200) {
+
+            resultado.innerHTML +=
+
+                "<li><em>" +
+                "Exibindo apenas os primeiros 200 erros." +
+                "</em></li>";
+
+        }
+
+        resultado.innerHTML +=
+
+            "</ul>" +
+
+            "</details>";
+
+    }
+
+}
+
+
+// ============================================================
+// FUNÇÃO: lerInicioArquivo()
+// ============================================================
+//
+// Lê apenas o começo do arquivo.
+//
+// Serve para identificar se o arquivo é HTML ou Excel.
+//
+// ============================================================
+
+async function lerInicioArquivo(arquivo) {
+
+    const tamanhoLeitura =
+        Math.min(
+            arquivo.size,
+            100 * 1024
+        );
+
+    const blob =
+        arquivo.slice(
+            0,
+            tamanhoLeitura
+        );
+
+    return await blob.text();
+
+}
+
+
+// ============================================================
+// FUNÇÃO: detectarHTML()
+// ============================================================
+//
+// Identifica se o arquivo é realmente HTML.
+//
+// O DOGO pode entregar um arquivo com extensão .xls,
+// mas internamente ele é HTML.
+//
+// ============================================================
+
+function detectarHTML(texto) {
+
+    if (!texto) {
+
+        return false;
+
+    }
+
+    const inicio =
+        texto
+            .trim()
+            .substring(0, 1000)
+            .toLowerCase();
+
+    return (
+        inicio.includes("<html") ||
+        inicio.includes("<table") ||
+        inicio.includes("<!doctype html")
+    );
+
+}
+
+
+// ============================================================
+// FUNÇÃO: limparTextoHTML()
+// ============================================================
+//
+// Remove tags HTML e decodifica entidades básicas.
+//
+// ============================================================
+
+function limparTextoHTML(texto) {
+
+    if (texto === null || texto === undefined) {
+
+        return "";
+
+    }
+
+    let resultado =
+        String(texto)
+            .replace(/<br\s*\/?>/gi, " ")
+            .replace(/<[^>]*>/g, "")
+            .replace(/&nbsp;/gi, " ")
+            .replace(/&amp;/gi, "&")
+            .replace(/&quot;/gi, '"')
+            .replace(/&#39;/gi, "'")
+            .replace(/&lt;/gi, "<")
+            .replace(/&gt;/gi, ">");
+
+    return resultado.trim();
+
+}
+
+
+// ============================================================
+// FUNÇÃO: extrairCelulasHTML()
+// ============================================================
+//
+// Extrai as células de uma linha <tr>.
+//
+// ============================================================
+
+function extrairCelulasHTML(linhaHTML) {
+
+    const celulas = [];
+
+    const regex =
+        /<(?:td|th)\b[^>]>([\s\S]?)<\/(?:td|th)>/gi;
+
+    let resultado;
+
+    while (
+        (resultado = regex.exec(linhaHTML)) !== null
+    ) {
+
+        celulas.push(
+            limparTextoHTML(
+                resultado[1]
+            )
+        );
+
+    }
+
+    return celulas;
+
+}
+
+
+// ============================================================
+// FUNÇÃO: normalizarCabecalho()
+// ============================================================
+//
+// Normaliza o nome das colunas para facilitar comparação.
+//
+// ============================================================
+
+function normalizarCabecalho(valor) {
+
+    return String(valor || "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+
+}
+
+
+// ============================================================
+// FUNÇÃO: localizarColuna()
+// ============================================================
+//
+// Procura uma coluna por diferentes nomes possíveis.
+//
+// ============================================================
+
+function localizarColuna(
+    cabecalhos,
+    nomes
+) {
+
+    for (
+        let i = 0;
+        i < cabecalhos.length;
+        i++
+    ) {
+
+        const atual =
+            normalizarCabecalho(
+                cabecalhos[i]
+            );
+
+        for (
+            const nome of nomes
+        ) {
+
+            if (
+                atual ===
+                normalizarCabecalho(nome)
+            ) {
+
+                return i;
+
+            }
+
+        }
+
+    }
+
+    return -1;
+
+}
+
+
+// ============================================================
+// FUNÇÃO: validarColunas()
+// ============================================================
+//
+// Verifica se as colunas essenciais existem.
+//
+// Obrigatórias:
+//
+// Produto
+// Descricao
+// Qtde. Est.
+// Qtde. Rsr.
+//
+// ============================================================
+
+function validarColunas(cabecalhos) {
+
+    const indiceProduto =
+        localizarColuna(
+            cabecalhos,
+            [
+                "Produto",
+                "Codigo",
+                "Código"
+            ]
+        );
+
+    const indiceDescricao =
+        localizarColuna(
+            cabecalhos,
+            [
+                "Descricao",
+                "Descrição"
+            ]
+        );
+
+    const indiceQuantidade =
+        localizarColuna(
+            cabecalhos,
+            [
+                "Qtde. Est.",
+                "Qtde Est."
+            ]
+        );
+
+    const indiceReservada =
+        localizarColuna(
+            cabecalhos,
+            [
+                "Qtde. Rsr.",
+                "Qtde Rsr."
+            ]
+        );
+
+
+    const faltando = [];
+
+
+    if (indiceProduto === -1) {
+
+        faltando.push(
+            "Produto"
+        );
+
+    }
+
+    if (indiceDescricao === -1) {
+
+        faltando.push(
+            "Descricao"
+        );
+
+    }
+
+    if (indiceQuantidade === -1) {
+
+        faltando.push(
+            "Qtde. Est."
+        );
+
+    }
+
+    if (indiceReservada === -1) {
+
+        faltando.push(
+            "Qtde. Rsr."
+        );
+
+    }
+
+
+    if (faltando.length > 0) {
+
+        throw new Error(
+            "Colunas obrigatórias ausentes: " +
+            faltando.join(", ")
+        );
+
+    }
+
+
+    return true;
+
+}
+
+
+// ============================================================
+// FUNÇÃO: criarLinhaPorCabecalhos()
+// ============================================================
+//
+// Converte uma linha de valores em um objeto.
+//
+// ============================================================
+
+function criarLinhaPorCabecalhos(
+    cabecalhos,
+    valores
+) {
+
+    const linha = {};
+
+
+    cabecalhos.forEach(
+        (cabecalho, indice) => {
+
+            linha[cabecalho] =
+                valores[indice] ?? "";
+
+        }
+    );
+
+
+    return linha;
+
+}
+
+
+// ============================================================
+// FUNÇÃO: processarArquivoHTML()
+// ============================================================
+//
+// Processa o arquivo DOGO.
+//
+// O arquivo pode ter extensão .xls, mas ser HTML.
+//
+// ============================================================
+
+async function processarArquivoHTML(
+    arquivo
+) {
+
+    const texto =
+        await arquivo.text();
+
+
+    const linhasHTML =
+        texto.match(
+            /<tr\b[^>]>[\s\S]?<\/tr>/gi
+        );
+
+
+    if (
+        !linhasHTML ||
+        linhasHTML.length === 0
+    ) {
+
+        throw new Error(
+            "Nenhuma tabela foi encontrada no arquivo DOGO."
+        );
+
+    }
+
+
+    let cabecalhos = null;
+
+    const novoInventario = [];
+
+
+    for (
+        let i = 0;
+        i < linhasHTML.length;
+        i++
+    ) {
+
+        const valores =
+            extrairCelulasHTML(
+                linhasHTML[i]
+            );
+
+
+        if (
+            valores.length === 0
+        ) {
+
+            continue;
+
+        }
+
+
+        // ====================================================
+        // PRIMEIRA LINHA VÁLIDA = CABEÇALHO
+        // ====================================================
+
+        if (!cabecalhos) {
+
+            const primeiraLinha =
+                valores.map(
+                    valor =>
+                        limparTextoHTML(valor)
+                );
+
+
+            if (
+                primeiraLinha.includes(
+                    "Produto"
+                ) ||
+                primeiraLinha.some(
+                    valor =>
+                        normalizarCabecalho(
+                            valor
+                        ) === "produto"
+                )
+            ) {
+
+                cabecalhos =
+                    primeiraLinha;
+
+                validarColunas(
+                    cabecalhos
+                );
+
+                continue;
+
+            }
+
+            continue;
+
+        }
+
+
+        // ====================================================
+        // IGNORAR LINHAS SEM DADOS
+        // ====================================================
+
+        if (
+            valores.every(
+                valor =>
+                    valorVazio(valor)
+            )
+        ) {
+
+            continue;
+
+        }
+
+
+        const linha =
+            criarLinhaPorCabecalhos(
+                cabecalhos,
+                valores
+            );
+
+
+        const numeroRegistro =
+            i + 1;
+
+
+        // ====================================================
+        // DIAGNÓSTICO ANTES DA CONVERSÃO
+        // ====================================================
+
+        analisarMaterialImportado(
+            linha,
+            numeroRegistro
+        );
+
+
+        // ====================================================
+        // CRIAR MATERIAL
+        // ====================================================
+
+        const material =
+            criarMaterial(
+                linha
+            );
+
+
+        novoInventario.push(
+            material
+        );
+
+
+        // ====================================================
+        // LIBERAR O NAVEGADOR PERIODICAMENTE
+        // ====================================================
+
+        if (
+            i % 1000 === 0
+        ) {
+
+            await permitirAtualizacaoNavegador();
+
+        }
+
+    }
+
+
+    if (!cabecalhos) {
+
+        throw new Error(
+            "Cabeçalho do DOGO não encontrado."
+        );
+
+    }
+
+
+    return novoInventario;
+
+}
+
+
+// ============================================================
+// FUNÇÃO: processarArquivoExcel()
+// ============================================================
+//
+// Processa Excel verdadeiro usando SheetJS.
+//
+// ============================================================
+
+async function processarArquivoExcel(
+    arquivo
+) {
+
+    if (!window.XLSX) {
+
+        throw new Error(
+            "Biblioteca Excel não carregada."
+        );
+
+    }
+
+
+    const arrayBuffer =
+        await arquivo.arrayBuffer();
+
+
+    const workbook =
+        XLSX.read(
+            arrayBuffer,
+            {
+                type: "array",
+                cellDates: false
+            }
+        );
+
+
+    if (
+        !workbook.SheetNames ||
+        workbook.SheetNames.length === 0
+    ) {
+
+        throw new Error(
+            "Nenhuma planilha encontrada."
+        );
+
+    }
+
+
+    const nomePlanilha =
+        workbook.SheetNames[0];
+
+
+    const planilha =
+        workbook.Sheets[
+            nomePlanilha
+        ];
+
+
+    const linhas =
+        XLSX.utils.sheet_to_json(
+            planilha,
+            {
+                defval: "",
+                raw: true
+            }
+        );
+
+
+    if (
+        linhas.length === 0
+    ) {
+
+        throw new Error(
+            "A planilha está vazia."
+        );
+
+    }
+
+
+    const cabecalhos =
+        Object.keys(
+            linhas[0]
+        );
+
+
+    validarColunas(
+        cabecalhos
+    );
+
+
+    const novoInventario = [];
+
+
+    linhas.forEach(
+        (
+            linha,
+            indice
+        ) => {
+
+            // =================================================
+            // DIAGNÓSTICO ANTES DA CONVERSÃO
+            // =================================================
+
+            analisarMaterialImportado(
+                linha,
+                indice + 2
+            );
+
+
+            // =================================================
+            // CRIAR MATERIAL
+            // =================================================
+
+            const material =
+                criarMaterial(
+                    linha
+                );
+
+
+            novoInventario.push(
+                material
+            );
+
+        }
+    );
+
+
+    return novoInventario;
+
+}
+
+
+// ============================================================
+// FUNÇÃO: permitirAtualizacaoNavegador()
+// ============================================================
+//
+// Dá uma pequena pausa para o navegador atualizar a interface.
+//
+// Importante para arquivos grandes.
+//
+// ============================================================
+
+function permitirAtualizacaoNavegador() {
+
+    return new Promise(
+        resolve => {
+
+            setTimeout(
+                resolve,
+                0
+            );
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// FUNÇÃO: importarExcel()
+// ============================================================
+//
+// FUNÇÃO PRINCIPAL.
+//
+// Fluxo:
+//
+// arquivo
+// ↓
+// detectar formato
+// ↓
+// validar
+// ↓
+// diagnóstico
+// ↓
+// criar inventário
+// ↓
+// IndexedDB
+// ↓
+// Supabase
+//
+// ============================================================
+
+async function importarExcel() {
+
+    const input =
+        document.getElementById(
+            "arquivoExcel"
+        );
+
+    const resultado =
+        document.getElementById(
+            "resultadoImportacao"
+        );
+
+
     if (!input) {
+
         console.error(
             "Elemento arquivoExcel não encontrado."
         );
+
         return;
+
     }
+
+
     if (!resultado) {
+
         console.error(
             "Elemento resultadoImportacao não encontrado."
         );
+
         return;
+
     }
-    // ====================================================
-    // VERIFICAR SE UM ARQUIVO FOI SELECIONADO
-    // ====================================================
+
+
+    // ========================================================
+    // VERIFICAR ARQUIVO
+    // ========================================================
+
     if (
         !input.files ||
         input.files.length === 0
     ) {
+
         resultado.innerHTML =
             "<p>❌ Selecione um arquivo para importar.</p>";
+
         return;
+
     }
-    // ====================================================
-    // OBTER O ARQUIVO SELECIONADO
-    // ====================================================
+
+
     const arquivo =
         input.files[0];
-    // ====================================================
-    // LIMITE MÁXIMO DO ARQUIVO
-    // ====================================================
-    const limiteMB = 100;
+
+
+    // ========================================================
+    // LIMITE
+    // ========================================================
+
     const limiteBytes =
-        limiteMB *
+        LIMITE_ARQUIVO_MB *
         1024 *
         1024;
+
+
     if (
         arquivo.size >
         limiteBytes
     ) {
+
         resultado.innerHTML =
+
             "<p>❌ Arquivo muito grande.</p>" +
+
             "<p>O tamanho máximo permitido é " +
-            limiteMB +
+            LIMITE_ARQUIVO_MB +
             " MB.</p>";
+
         return;
+
     }
-    // ====================================================
-    // INICIAR PROCESSAMENTO
-    // ====================================================
+
+
+    // ========================================================
+    // INICIAR DIAGNÓSTICO
+    // ========================================================
+
+    iniciarDiagnosticoImportacao();
+
+
     resultado.innerHTML =
-        "<p>⏳ Preparando arquivo...</p>";
+        "<p>⏳ Preparando importação...</p>";
+
+
     try {
+
         // ====================================================
-        // VERIFICAR SHEETJS
+        // SHEETJS
         // ====================================================
+
         if (!window.XLSX) {
+
             throw new Error(
                 "Biblioteca Excel não carregada."
             );
+
         }
+
+
         // ====================================================
-        // LER O COMEÇO DO ARQUIVO
+        // DETECTAR FORMATO
         // ====================================================
+
         resultado.innerHTML =
             "<p>⏳ Identificando formato do arquivo...</p>";
+
+
         const inicioArquivo =
             await lerInicioArquivo(
                 arquivo
             );
-        // ====================================================
-        // DETECTAR HTML
-        // ====================================================
+
+
         const ehHTML =
             detectarHTML(
                 inicioArquivo
             );
+
+
         console.log(
-            "Arquivo selecionado:",
+            "Arquivo:",
             arquivo.name
         );
+
         console.log(
             "Tamanho:",
             arquivo.size,
             "bytes"
         );
+
         console.log(
-            "Formato detectado:",
+            "Formato:",
             ehHTML
                 ? "HTML"
                 : "Excel"
         );
+
+
         // ====================================================
-        // VARIÁVEL DO INVENTÁRIO PROCESSADO
+        // PROCESSAR
         // ====================================================
+
         let novoInventario = [];
-        // ====================================================
-        // CAMINHO 1:
-        // ARQUIVO HTML DO DOGO
-        // ====================================================
+
+
         if (ehHTML) {
+
             resultado.innerHTML =
+
                 "<p>⏳ Arquivo DOGO detectado.</p>" +
+
                 "<p>Processando tabela...</p>";
+
+
             novoInventario =
                 await processarArquivoHTML(
                     arquivo
                 );
+
         }
-        // ====================================================
-        // CAMINHO 2:
-        // EXCEL VERDADEIRO
-        // ====================================================
         else {
+
             resultado.innerHTML =
+
                 "<p>⏳ Processando planilha Excel...</p>";
+
+
             novoInventario =
                 await processarArquivoExcel(
                     arquivo
                 );
+
         }
+
+
         // ====================================================
         // VERIFICAR RESULTADO
         // ====================================================
+
+        if (
+            novoInventario.length === 0
+        ) {
+
+            throw new Error(
+                "Nenhum material válido foi encontrado."
+            );
+
+        }
+
 
         console.log(
             "Materiais processados:",
             novoInventario.length
         );
-        if (
-            novoInventario.length === 0
-        ) {
-            throw new Error(
-                "Nenhum material válido foi encontrado."
-            );
-        }
+
+
         // ====================================================
-        // GUARDAR INVENTÁRIO ATUAL
+        // MOSTRAR DIAGNÓSTICO
         // ====================================================
+
+        resultado.innerHTML =
+
+            "<p>🔎 Análise concluída.</p>" +
+
+            "<p><strong>" +
+
+            novoInventario.length
+                .toLocaleString("pt-BR") +
+
+            "</strong> materiais processados.</p>";
+
+
+        atualizarDiagnosticoTela();
+
+
+        // ====================================================
+        // GUARDAR INVENTÁRIO ANTERIOR
+        // ====================================================
+
         const inventarioAnterior =
             materiais;
+
+
         // ====================================================
         // COLOCAR NOVO INVENTÁRIO EM MEMÓRIA
         // ====================================================
+
         materiais =
             novoInventario;
+
+
         // ====================================================
-        // SALVAR NO INDEXEDDB
+        // SALVAR INDEXEDDB
         // ====================================================
-        resultado.innerHTML =
+
+        resultado.innerHTML +=
+
             "<p>⏳ Salvando inventário local...</p>";
+
+
         try {
+
             await salvarMateriais();
-        } catch (erroSalvar) {
-            // ================================================
-            // RESTAURAR INVENTÁRIO ANTERIOR EM MEMÓRIA
-            // ================================================
+
+        }
+        catch (erroSalvar) {
+
             materiais =
                 inventarioAnterior;
+
             throw erroSalvar;
+
         }
+
+
         // ====================================================
-        // REMOVER MARCA DE INVENTÁRIO ZERADO
+        // MARCA DE INVENTÁRIO ZERADO
         // ====================================================
+
         desmarcarInventarioZerado();
+
+
         // ====================================================
-        // MENSAGEM ANTES DO SUPABASE
+        // PREPARAR SUPABASE
         // ====================================================
-        resultado.innerHTML =
-            "<p>✅ Inventário processado com sucesso!</p>" +
-            "<p><strong>" +
-            novoInventario.length.toLocaleString(
-                "pt-BR"
-            ) +
-            "</strong> materiais processados.</p>" +
-            "<br>" +
-            "<p>💾 Inventário salvo localmente.</p>" +
-            "<p>☁️ Preparando envio para o Supabase...</p>";
+
+        resultado.innerHTML +=
+
+            "<p>💾 Inventário local atualizado.</p>" +
+
+            "<p>☁️ Preparando banco central...</p>";
+
+
         // ====================================================
-        // ENVIAR AUTOMATICAMENTE PARA O SUPABASE
+        // IMPORTAR PARA SUPABASE
         // ====================================================
-        //
-        // Agora o Supabase faz parte da importação oficial.
-        //
-        // Não existe mais botão separado de teste.
-        //
-        // ====================================================
+
         await importarParaSupabase(
             materiais
         );
+
+
         // ====================================================
-        // DIAGNÓSTICOS
+        // FINAL
         // ====================================================
+
         console.log(
             "Importação completa concluída."
         );
-        console.log(
-            "Materiais processados:",
-            novoInventario.length
-        );
-        console.log(
-            "Inventário zerado:",
-            "não"
-        );
-    } catch (erro) {
-        // ====================================================
-        // TRATAMENTO GERAL DE ERRO
-        // ====================================================
+
+    }
+    catch (erro) {
+
         console.error(
             "Erro durante a importação:",
             erro
         );
-        resultado.innerHTML =
-            "<p>❌ Erro durante a importação.</p>" +
+
+
+        resultado.innerHTML +=
+
+            "<hr>" +
+
+            "<p>❌ <strong>Erro durante a importação.</strong></p>" +
+
             "<p>" +
+
             (
                 erro.message ||
                 "Erro desconhecido."
             ) +
+
             "</p>";
+
     }
+
 }
-// ====================================================
+
+
+// ============================================================
 // FUNÇÃO: importarParaSupabase()
-// ====================================================
+// ============================================================
 //
-// Envia o inventário atual para o Supabase.
+// Envia o inventário para o banco central.
 //
-// FLUXO:
+// Fluxo:
 //
 // 1. Verifica conexão.
-// 2. Verifica se já existe uma importação em andamento.
-// 3. Ativa a trava.
-// 4. Limpa a tabela materiais.
-// 5. Divide o inventário em lotes de 500.
-// 6. Envia cada lote.
-// 7. Atualiza o progresso.
-// 8. Libera a trava.
+// 2. Verifica trava.
+// 3. Ativa trava.
+// 4. Apaga materiais antigos.
+// 5. Divide em lotes.
+// 6. Envia lotes.
+// 7. Atualiza progresso.
+// 8. Libera trava.
 //
-// IMPORTANTE:
-//
-// Essa função substitui a antiga:
-//
-//     testarEnvioSupabase()
-//
-// Agora o envio para o Supabase é definitivo.
-//
-// ====================================================
+// ============================================================
+
 async function importarParaSupabase(
     inventario
 ) {
-    // ====================================================
-    // LOCALIZAR RESULTADO
-    // ====================================================
+
     const resultado =
         document.getElementById(
             "resultadoImportacao"
         );
+
+
     if (!resultado) {
+
         console.error(
             "Elemento resultadoImportacao não encontrado."
         );
+
         return;
+
     }
-    // ====================================================
-    // VERIFICAR CLIENTE SUPABASE
-    // ====================================================
+
+
+    // ========================================================
+    // VERIFICAR CLIENTE
+    // ========================================================
+
     if (
         !window.clienteSupabase
     ) {
-        resultado.innerHTML =
-            "<p>🔴 Cliente Supabase não encontrado.</p>";
+
         throw new Error(
-            "Cliente Supabase não encontrado."
+            "Supabase não inicializado."
         );
+
     }
-    // ====================================================
-    // VERIFICAR INVENTÁRIO
-    // ====================================================
-    if (
-        !inventario ||
-        inventario.length === 0
-    ) {
-        resultado.innerHTML =
-            "<p>❌ Nenhum material disponível para enviar.</p>";
-        throw new Error(
-            "Nenhum material disponível para enviar ao Supabase."
-        );
-    }
-    // ====================================================
-    // PROTEÇÃO CONTRA DUPLO CLIQUE
-    // ====================================================
+
+
+    // ========================================================
+    // IMPEDIR DUPLICIDADE
+    // ========================================================
+
     if (
         importacaoSupabaseEmAndamento
     ) {
-        resultado.innerHTML =
+
+        resultado.innerHTML +=
+
             "<p>⚠️ Já existe uma importação para o Supabase em andamento.</p>";
+
         return;
+
     }
-    // ====================================================
-    // ATIVAR TRAVA
-    // ====================================================
+
+
     importacaoSupabaseEmAndamento =
         true;
-    // ====================================================
-    // TAMANHO DOS LOTES
-    // ====================================================
-    //
-    // Cada requisição enviará até 500 materiais.
-    //
-    // Exemplo:
-    //
-    // 92.735 materiais
-    //
-    // serão enviados em aproximadamente 186 lotes.
-    //
-    // ====================================================
-    const tamanhoLote = 500;
-    // ====================================================
-    // CONTADORES
-    // ====================================================
-    let enviados = 0;
-    const total =
-        inventario.length;
-    const quantidadeLotes =
-        Math.ceil(
-            total /
-            tamanhoLote
-        );
+
+
     try {
+
         // ====================================================
-        // AVISAR QUE O SUPABASE SERÁ PREPARADO
+        // VALIDAR INVENTÁRIO
         // ====================================================
-        resultado.innerHTML =
-            "<p>☁️ Preparando banco central...</p>" +
-            "<p>O inventário anterior será substituído.</p>" +
-            "<p>📦 " +
-            total.toLocaleString(
-                "pt-BR"
-            ) +
-            " materiais para importar.</p>";
+
+        if (
+            !Array.isArray(inventario) ||
+            inventario.length === 0
+        ) {
+
+            throw new Error(
+                "Inventário vazio."
+            );
+
+        }
+
+
         // ====================================================
         // LIMPAR INVENTÁRIO ANTERIOR
         // ====================================================
-        //
-        // A importação representa um novo retrato
-        // do estoque vindo do DOGO.
-        //
-        // Portanto, removemos os materiais anteriores
-        // antes de gravar o novo inventário.
-        //
-        // ====================================================
-        const respostaLimpeza =
+
+        resultado.innerHTML +=
+
+            "<p>🗑️ Limpando inventário anterior do Supabase...</p>";
+
+
+        const respostaDelete =
             await window.clienteSupabase
                 .from("materiais")
                 .delete()
@@ -686,870 +2048,282 @@ async function importarParaSupabase(
                     "is",
                     null
                 );
-        // ====================================================
-        // VERIFICAR ERRO NA LIMPEZA
-        // ====================================================
+
+
         if (
-            respostaLimpeza.error
+            respostaDelete.error
         ) {
+
             throw new Error(
-                "Não foi possível limpar os materiais anteriores: " +
-                respostaLimpeza.error.message
+
+                "Não foi possível limpar o inventário anterior: " +
+
+                respostaDelete.error.message
+
             );
+
         }
+
+
         // ====================================================
-        // CONFIRMAR LIMPEZA
+        // CALCULAR LOTES
         // ====================================================
-        resultado.innerHTML =
-            "<p>🧹 Inventário anterior removido.</p>" +
-            "<p>☁️ Iniciando importação para o Supabase...</p>" +
-            "<p>0 de <strong>" +
-            total.toLocaleString(
-                "pt-BR"
-            ) +
-            "</strong> materiais enviados.</p>";
+
+        const total =
+            inventario.length;
+
+
+        const quantidadeLotes =
+            Math.ceil(
+                total /
+                TAMANHO_LOTE_SUPABASE
+            );
+
+
+        let enviados = 0;
+
+
         // ====================================================
-        // PROCESSAR LOTES
+        // ENVIAR LOTES
         // ====================================================
+
         for (
             let inicio = 0;
             inicio < total;
-            inicio += tamanhoLote
+            inicio += TAMANHO_LOTE_SUPABASE
         ) {
-            // =================================================
-            // DEFINIR FINAL DO LOTE
-            // =================================================
+
             const fim =
                 Math.min(
                     inicio +
-                    tamanhoLote,
+                    TAMANHO_LOTE_SUPABASE,
                     total
                 );
-            // =================================================
-            // SEPARAR LOTE
-            // =================================================
+
+
             const lote =
                 inventario.slice(
                     inicio,
                     fim
                 );
-            // =================================================
-            // TRANSFORMAR OBJETOS DO PMOBILE
-            // PARA O FORMATO DA TABELA SUPABASE
-            // =================================================
+
+
+            // ==================================================
+            // CONVERTER PARA FORMATO SUPABASE
+            // ==================================================
+
             const dadosSupabase =
                 lote.map(
                     material => ({
+
                         codigo:
-                            material.codigo,
+                            material.codigo || "",
+
                         descricao:
-                            material.descricao,
+                            material.descricao || "",
+
                         referencia:
                             material.referencia || null,
+
                         marca:
                             material.marca || null,
+
                         local:
                             material.local || null,
+
                         quantidade:
                             material.quantidade ?? 0,
+
                         quantidade_reservada:
                             material.quantidadeReservada ?? 0,
+
                         disponivel:
                             material.disponivel ?? 0,
+
                         ultima_entrada:
                             material.ultimaEntrada || null
+
                     })
                 );
-            // =================================================
-            // NÚMERO DO LOTE ATUAL
-            // =================================================
+
+
+            // ==================================================
+            // NÚMERO DO LOTE
+            // ==================================================
+
             const numeroLote =
                 Math.floor(
                     inicio /
-                    tamanhoLote
+                    TAMANHO_LOTE_SUPABASE
                 ) + 1;
-            // =================================================
-            // ENVIAR LOTE
-            // =================================================
+
+
+            // ==================================================
+            // ENVIAR
+            // ==================================================
+
             const resposta =
                 await window.clienteSupabase
                     .from("materiais")
                     .insert(
                         dadosSupabase
                     );
-            // =================================================
+
+
+            // ==================================================
             // VERIFICAR ERRO
-            // =================================================
+            // ==================================================
+
             if (
                 resposta.error
             ) {
+
                 throw new Error(
+
                     "Erro no lote " +
+
                     numeroLote +
+
                     " de " +
+
                     quantidadeLotes +
+
                     ": " +
+
                     resposta.error.message
+
                 );
+
             }
-            // =================================================
+
+
+            // ==================================================
             // ATUALIZAR CONTADOR
-            // =================================================
+            // ==================================================
+
             enviados =
                 fim;
-            // =================================================
+
+
+            // ==================================================
             // ATUALIZAR TELA
-            // =================================================
+            // ==================================================
+
             resultado.innerHTML =
+
                 "<p>☁️ Importando inventário para o Supabase...</p>" +
+
                 "<p><strong>" +
+
                 enviados.toLocaleString(
                     "pt-BR"
                 ) +
+
                 "</strong> de <strong>" +
+
                 total.toLocaleString(
                     "pt-BR"
                 ) +
+
                 "</strong> materiais enviados.</p>" +
+
                 "<p>📦 Lote " +
+
                 numeroLote +
+
                 " de " +
+
                 quantidadeLotes +
+
                 "</p>";
-            // =================================================
-            // PERMITIR ATUALIZAÇÃO DO NAVEGADOR
-            // =================================================
+
+
+            // ==================================================
+            // DAR TEMPO PARA O NAVEGADOR ATUALIZAR
+            // ==================================================
+
             await permitirAtualizacaoNavegador();
+
         }
+
+
         // ====================================================
         // SUCESSO
         // ====================================================
-        resultado.innerHTML =
+
+        resultado.innerHTML +=
+
+            "<hr>" +
+
             "<p>🟢 <strong>Importação concluída com sucesso!</strong></p>" +
+
             "<p>" +
+
             enviados.toLocaleString(
                 "pt-BR"
             ) +
+
             " materiais foram gravados no Supabase.</p>" +
+
             "<p>☁️ Banco central atualizado.</p>" +
-            "<p>💾 O IndexedDB local também foi atualizado.</p>";
-        // ====================================================
-        // DIAGNÓSTICOS
-        // ====================================================
+
+            "<p>💾 IndexedDB local também atualizado.</p>";
+
+
         console.log(
             "Importação Supabase concluída."
         );
+
         console.log(
             "Materiais enviados:",
             enviados
         );
+
         console.log(
             "Quantidade de lotes:",
             quantidadeLotes
         );
-    } catch (erro) {
-        // ====================================================
-        // ERRO NO ENVIO
-        // ====================================================
+
+    }
+    catch (erro) {
+
         console.error(
-            "Erro durante importação Supabase:",
+            "Erro na importação Supabase:",
             erro
         );
-        resultado.innerHTML =
-            "<p>🔴 <strong>Erro durante a importação para o Supabase.</strong></p>" +
+
+
+        resultado.innerHTML +=
+
+            "<hr>" +
+
+            "<p>🔴 <strong>Erro ao enviar para o Supabase.</strong></p>" +
+
             "<p>" +
+
             (
                 erro.message ||
                 "Erro desconhecido."
             ) +
-            "</p>" +
-            "<p>Foram enviados " +
-            enviados.toLocaleString(
-                "pt-BR"
-            ) +
-            " de " +
-            total.toLocaleString(
-                "pt-BR"
-            ) +
-            " materiais.</p>" +
-            "<p>⚠️ O Supabase pode estar com um inventário parcial.</p>" +
-            "<p>💾 O IndexedDB local permanece disponível.</p>";
-        // ====================================================
-        // PROPAGAR ERRO
-        // ====================================================
+
+            "</p>";
+
+
+        // Repassa o erro para importarExcel()
+        // não considerar a operação como concluída.
+
         throw erro;
-    } finally {
+
+    }
+    finally {
+
         // ====================================================
         // LIBERAR TRAVA
         // ====================================================
-        //
-        // Mesmo que ocorra erro, a trava precisa
-        // ser liberada.
-        //
-        // ====================================================
+
         importacaoSupabaseEmAndamento =
             false;
+
     }
-}
-// ====================================================
-// FUNÇÃO: lerInicioArquivo()
-// ====================================================
-function lerInicioArquivo(arquivo) {
-    return new Promise(
-        (resolve, reject) => {
-            const tamanhoLeitura =
-                Math.min(
-                    arquivo.size,
-                    8192
-                );
-            const blob =
-                arquivo.slice(
-                    0,
-                    tamanhoLeitura
-                );
-            const leitor =
-                new FileReader();
-            leitor.onload =
-                function() {
-                    resolve(
-                        leitor.result || ""
-                    );
-                };
-            leitor.onerror =
-                function() {
-                    reject(
-                        new Error(
-                            "Não foi possível identificar o formato do arquivo."
-                        )
-                    );
-                };
-            leitor.readAsText(
-                blob,
-                "windows-1252"
-            );
-        }
-    );
-}
-// ====================================================
-// FUNÇÃO: detectarHTML()
-// ====================================================
-function detectarHTML(conteudo) {
-    if (!conteudo) {
-        return false;
-    }
-    const texto =
-        String(conteudo)
-            .trim()
-            .toLowerCase();
-    return (
-        texto.startsWith("<") ||
-        texto.includes("<html") ||
-        texto.includes("<table") ||
-        texto.includes("<tr") ||
-        texto.includes("<meta") ||
-        texto.includes("<!doctype")
-    );
-}
-// ====================================================
-// FUNÇÃO: processarArquivoHTML()
-// ====================================================
-async function processarArquivoHTML(arquivo) {
-    const texto =
-        await lerArquivoComoTexto(
-            arquivo
-        );
-    if (!texto) {
-        throw new Error(
-            "O arquivo está vazio."
-        );
-    }
-    console.log(
-        "Arquivo HTML carregado."
-    );
-    console.log(
-        "Tamanho do texto:",
-        texto.length,
-        "caracteres"
-    );
-    // ====================================================
-    // LOCALIZAR LINHAS DA TABELA
-    // ====================================================
-    const regexLinha =
-        /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
-    // ====================================================
-    // CABEÇALHOS
-    // ====================================================
-    let cabecalhos =
-        null;
-    // ====================================================
-    // INVENTÁRIO RESULTANTE
-    // ====================================================
-    const novoInventario = [];
-    // ====================================================
-    // CONTADOR DE LINHAS
-    // ====================================================
-    let quantidadeLinhas =
-        0;
-    let linhaEncontrada;
-    // ====================================================
-    // PROCESSAR LINHA POR LINHA
-    // ====================================================
-    while (
-        (
-            linhaEncontrada =
-                regexLinha.exec(texto)
-        ) !== null
-    ) {
-        const conteudoLinha =
-            linhaEncontrada[1];
-        // =================================================
-        // EXTRAIR CÉLULAS
-        // =================================================
-        const celulas =
-            extrairCelulasHTML(
-                conteudoLinha
-            );
-        if (
-            celulas.length === 0
-        ) {
-            continue;
-        }
-        quantidadeLinhas++;
-        // =================================================
-        // PRIMEIRA LINHA = CABEÇALHOS
-        // =================================================
-        if (
-            cabecalhos === null
-        ) {
-            cabecalhos =
-                celulas.map(
-                    celula =>
-                        limparTextoHTML(
-                            celula
-                        )
-                );
-            console.log(
-                "Cabeçalhos encontrados:",
-                cabecalhos
-            );
-            validarCabecalhos(
-                cabecalhos
-            );
-            continue;
-        }
-        // =================================================
-        // CONVERTER LINHA EM OBJETO
-        // =================================================
-        const linha =
-            {};
-        cabecalhos.forEach(
-            (
-                cabecalho,
-                indice
-            ) => {
-                linha[cabecalho] =
-                    limparTextoHTML(
-                        celulas[indice] ??
-                        ""
-                    );
-            }
-        );
-        // =================================================
-        // TRANSFORMAR LINHA EM MATERIAL
-        // =================================================
-        const material =
-            criarMaterial(
-                linha
-            );
-            analisarMaterialImportado(
-                material,
-                quantidadeLinhas
-                );
-        novoInventario.push(
-            material
-        );
-        // =================================================
-        // ATUALIZAR PROGRESSO
-        // =================================================
-        if (
-            novoInventario.length % 1000 === 0
-        ) {
-            console.log(
-                "Materiais processados:",
-                novoInventario.length
-            );
-            await permitirAtualizacaoNavegador();
-        }
-    }
-    // ====================================================
-    // DIAGNÓSTICOS
-    // ====================================================
-    console.log(
-        "Linhas HTML encontradas:",
-        quantidadeLinhas
-    );
-    console.log(
-        "Materiais HTML processados:",
-        novoInventario.length
-    );
-    if (
-        cabecalhos === null
-    ) {
-        throw new Error(
-            "Nenhuma tabela foi encontrada no arquivo."
-        );
-    }
-    return novoInventario;
-}
-// ====================================================
-// FUNÇÃO: lerArquivoComoTexto()
-// ====================================================
-function lerArquivoComoTexto(arquivo) {
-    return new Promise(
-        (resolve, reject) => {
-            const leitor =
-                new FileReader();
-            leitor.onload =
-                function() {
-                    resolve(
-                        leitor.result || ""
-                    );
-                };
-            leitor.onerror =
-                function() {
-                    reject(
-                        new Error(
-                            "Não foi possível ler o arquivo."
-                        )
-                    );
-                };
-            leitor.readAsText(
-                arquivo,
-                "windows-1252"
-            );
-        }
-    );
-}
-// ====================================================
-// FUNÇÃO: extrairCelulasHTML()
-// ====================================================
-function extrairCelulasHTML(conteudoLinha) {
-    const regexCelula =
-        /<(?:td|th)\b[^>]*>([\s\S]*?)<\/(?:td|th)>/gi;
-    const celulas = [];
-    let encontrada;
-    while (
-        (
-            encontrada =
-                regexCelula.exec(
-                    conteudoLinha
-                )
-        ) !== null
-    ) {
-        celulas.push(
-            encontrada[1]
-        );
-    }
-    return celulas;
-}
-// ====================================================
-// FUNÇÃO: limparTextoHTML()
-// ====================================================
-function limparTextoHTML(valor) {
-    let texto =
-        String(
-            valor ?? ""
-        );
-    // ====================================================
-    // QUEBRAS DE LINHA
-    // ====================================================
-    texto =
-        texto.replace(
-            /<br\s*\/?>/gi,
-            " "
-        );
-    // ====================================================
-    // REMOVER TAGS
-    // ====================================================
-    texto =
-        texto.replace(
-            /<[^>]*>/g,
-            ""
-        );
-    // ====================================================
-    // ENTIDADES HTML
-    // ====================================================
-    texto =
-        texto.replace(
-            /&nbsp;/gi,
-            " "
-        );
-    texto =
-        texto.replace(
-            /&amp;/gi,
-            "&"
-        );
-    texto =
-        texto.replace(
-            /&lt;/gi,
-            "<"
-        );
-    texto =
-        texto.replace(
-            /&gt;/gi,
-            ">"
-        );
-    texto =
-        texto.replace(
-            /&quot;/gi,
-            '"'
-        );
-    texto =
-        texto.replace(
-            /&#39;/gi,
-            "'"
-        );
-    // ====================================================
-    // ENTIDADES NUMÉRICAS
-    // ====================================================
-    texto =
-        texto.replace(
-            /&#(\d+);/g,
-            function(
-                completo,
-                codigo
-            ) {
-                return String.fromCharCode(
-                    Number(codigo)
-                );
-            }
-        );
-    texto =
-        texto.replace(
-            /&#x([0-9a-f]+);/gi,
-            function(
-                completo,
-                codigo
-            ) {
-                return String.fromCharCode(
-                    parseInt(
-                        codigo,
-                        16
-                    )
-                );
-            }
-        );
-    // ====================================================
-    // LIMPAR ESPAÇOS
-    // ====================================================
-    return texto.trim();
-}
-// ====================================================
-// FUNÇÃO: validarCabecalhos()
-// ====================================================
-function validarCabecalhos(cabecalhos) {
-    const possuiProduto =
-        cabecalhos.includes(
-            "Produto"
-        );
-    const possuiDescricao =
-        cabecalhos.includes(
-            "Descrição"
-        ) ||
-        cabecalhos.includes(
-            "Descricao"
-        );
-    const possuiEstoque =
-        cabecalhos.includes(
-            "Qtde. Est."
-        ) ||
-        cabecalhos.includes(
-            "Qtde. Est"
-        );
-    const possuiReservada =
-        cabecalhos.includes(
-            "Qtde. Rsr."
-        );
-    if (!possuiProduto) {
-        throw new Error(
-            "A coluna 'Produto' não foi encontrada."
-        );
-    }
-    if (!possuiDescricao) {
-        throw new Error(
-            "A coluna 'Descrição' não foi encontrada."
-        );
-    }
-    if (!possuiEstoque) {
-        throw new Error(
-            "A coluna 'Qtde. Est.' não foi encontrada."
-        );
-    }
-    if (!possuiReservada) {
-        throw new Error(
-            "A coluna 'Qtde. Rsr.' não foi encontrada."
-        );
-    }
-}
-// ====================================================
-// FUNÇÃO: processarArquivoExcel()
-// ====================================================
-async function processarArquivoExcel(arquivo) {
-    // ====================================================
-    // LER COMO ARRAYBUFFER
-    // ====================================================
-    const dados =
-        await arquivo.arrayBuffer();
-    // ====================================================
-    // INTERPRETAR COM SHEETJS
-    // ====================================================
-    const workbook =
-        XLSX.read(
-            dados,
-            {
-                type: "array"
-            }
-        );
-    // ====================================================
-    // VERIFICAR ABAS
-    // ====================================================
-    if (
-        !workbook.SheetNames ||
-        workbook.SheetNames.length === 0
-    ) {
-        throw new Error(
-            "Nenhuma aba foi encontrada no arquivo."
-        );
-    }
-    // ====================================================
-    // PRIMEIRA ABA
-    // ====================================================
-    const nomePrimeiraAba =
-        workbook.SheetNames[0];
-    const primeiraAba =
-        workbook.Sheets[
-            nomePrimeiraAba
-        ];
-    console.log(
-        "Primeira aba:",
-        nomePrimeiraAba
-    );
-    console.log(
-        "Intervalo:",
-        primeiraAba["!ref"]
-    );
-    // ====================================================
-    // CONVERTER PARA JSON
-    // ====================================================
-    const linhas =
-        XLSX.utils.sheet_to_json(
-            primeiraAba,
-            {
-                defval: ""
-            }
-        );
-    if (
-        !linhas ||
-        linhas.length === 0
-    ) {
-        throw new Error(
-            "A planilha não possui dados."
-        );
-    }
-    // ====================================================
-    // VALIDAR CABEÇALHOS
-    // ====================================================
-    const cabecalhos =
-        Object.keys(
-            linhas[0]
-        );
-    console.log(
-        "Colunas encontradas:",
-        cabecalhos
-    );
-    validarCabecalhos(
-        cabecalhos
-    );
-    // ====================================================
-    // CRIAR NOVO INVENTÁRIO
-    // ====================================================
-    const novoInventario = [];
-    // ====================================================
-    // PROCESSAR LINHAS
-    // ====================================================
-    linhas.forEach(
-        linha, 
-        indice
-    ) => {
-            const material =
-                criarmaterial(
-                    linha
-                    );
-        analisarmaterialimportado(
-            material,
-            indice + 2
-            );
-        novoinventario.push(
-            material
-            );
-    }
-    );
-// ====================================================
-// FUNÇÃO: criarMaterial()
-// ====================================================
-function criarMaterial(linha) {
-    // ====================================================
-    // CÓDIGO
-    // ====================================================
-    const codigo =
-        String(
-            linha["Produto"] ??
-            ""
-        ).trim();
-    // ====================================================
-    // DESCRIÇÃO
-    // ====================================================
-    const descricao =
-        String(
-            linha["Descrição"] ??
-            linha["Descricao"] ??
-            ""
-        ).trim();
-    // ====================================================
-    // REFERÊNCIA
-    // ====================================================
-    const referencia =
-        String(
-            linha["Referência"] ??
-            linha["Referencia"] ??
-            ""
-        ).trim();
-    // ====================================================
-    // MARCA
-    // ====================================================
-    const marca =
-        String(
-            linha["Marca"] ??
-            ""
-        ).trim();
-    // ====================================================
-    // LOCAL
-    // ====================================================
-    const local =
-        String(
-            linha["Local"] ??
-            ""
-        ).trim();
-    // ====================================================
-    // ÚLTIMA ENTRADA
-    // ====================================================
-    const ultimaEntrada =
-        String(
-            linha["Última entrada"] ??
-            linha["Última Entrada"] ??
-            linha["Ultima entrada"] ??
-            linha["Ultima Entrada"] ??
-            ""
-        ).trim();
-    // ====================================================
-    // ESTOQUE TOTAL
-    // ====================================================
-    const estoqueTotal =
-        converterNumero(
-            linha["Qtde. Est."] ??
-            linha["Qtde. Est"] ??
-            0
-        );
-    // ====================================================
-    // QUANTIDADE RESERVADA
-    // ====================================================
-    const quantidadeReservada =
-        converterNumero(
-            linha["Qtde. Rsr."] ??
-            0
-        );
-    // ====================================================
-    // QUANTIDADE DISPONÍVEL
-    // ====================================================
-    const disponivel =
-        estoqueTotal -
-        quantidadeReservada;
-    // ====================================================
-    // RETORNAR MATERIAL
-    // ====================================================
-    return {
-        codigo:
-            codigo,
-        descricao:
-            descricao,
-        referencia:
-            referencia,
-        marca:
-            marca,
-        local:
-            local,
-        quantidade:
-            estoqueTotal,
-        quantidadeReservada:
-            quantidadeReservada,
-        disponivel:
-            disponivel,
-        ultimaEntrada:
-            ultimaEntrada
-    };
-}
-// ====================================================
-// FUNÇÃO: converterNumero()
-// ====================================================
-function converterNumero(valor) {
-    if (
-        typeof valor === "number"
-    ) {
-        return isNaN(valor)
-            ? 0
-            : valor;
-    }
-    let texto =
-        String(
-            valor ?? ""
-        ).trim();
-    if (texto === "") {
-        return 0;
-    }
-    // ====================================================
-    // REMOVER ESPAÇOS
-    // ====================================================
-    texto =
-        texto.replace(
-            /\s+/g,
-            ""
-        );
-    // ====================================================
-    // CONVERTER NÚMERO
-    // ====================================================
-    const numero =
-        Number(
-            texto
-        );
-    return isNaN(numero)
-        ? 0
-        : numero;
-}
-// ====================================================
-// FUNÇÃO: permitirAtualizacaoNavegador()
-// ====================================================
-//
-// Permite que o navegador tenha uma pequena oportunidade
-// de atualizar a interface.
-//
-// ====================================================
-function permitirAtualizacaoNavegador() {
-    return new Promise(
-        resolve => {
-            setTimeout(
-                resolve,
-                0
-            );
-        }
-    );
+
 }
