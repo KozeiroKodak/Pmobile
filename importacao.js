@@ -17,13 +17,20 @@
 // 9. Remover a marca de "inventário zerado"
 //    somente após o salvamento bem-sucedido.
 //
+// TESTE SUPABASE:
+//
+// 10. Permitir enviar o inventário processado
+//     para a tabela "materiais" do Supabase.
+//
 // IMPORTANTE:
 //
-// O arquivo exportado pelo DOGO que estamos testando
-// possui extensão .xls, mas seu conteúdo real é HTML.
+// O teste do Supabase é separado do funcionamento
+// normal do PMOBILE.
 //
-// Por isso ele NÃO deve ser obrigatoriamente tratado
-// como uma planilha Excel pelo SheetJS.
+// A importação continua salvando normalmente no
+// IndexedDB.
+//
+// O envio para o Supabase NÃO acontece automaticamente.
 //
 // ====================================================
 
@@ -108,21 +115,6 @@ async function importarExcel() {
     // ====================================================
     // LIMITE MÁXIMO DO ARQUIVO
     // ====================================================
-    //
-    // O limite definido para o PMOBILE é:
-    //
-    // 100 MB
-    //
-    // O arquivo é rejeitado antes do processamento
-    // caso ultrapasse esse limite.
-    //
-    // Observação:
-    //
-    // 100 MB é o limite do arquivo original.
-    // Um arquivo Excel/HTML pode consumir muito mais
-    // memória durante o processamento.
-    //
-    // ====================================================
 
     const limiteMB = 100;
 
@@ -160,14 +152,6 @@ async function importarExcel() {
         // ====================================================
         // VERIFICAR SHEETJS
         // ====================================================
-        //
-        // SheetJS continua sendo utilizado para arquivos
-        // Excel verdadeiros.
-        //
-        // Para o HTML do DOGO utilizaremos um processamento
-        // próprio mais leve.
-        //
-        // ====================================================
 
         if (!window.XLSX) {
 
@@ -180,19 +164,6 @@ async function importarExcel() {
 
         // ====================================================
         // LER O COMEÇO DO ARQUIVO
-        // ====================================================
-        //
-        // Antes de decidir como processar o arquivo,
-        // verificamos seu conteúdo real.
-        //
-        // Isso é necessário porque o DOGO pode gerar:
-        //
-        //     arquivo.xls
-        //
-        // cujo conteúdo é:
-        //
-        //     HTML
-        //
         // ====================================================
 
         resultado.innerHTML =
@@ -306,17 +277,6 @@ async function importarExcel() {
         // ====================================================
         // GUARDAR INVENTÁRIO ATUAL
         // ====================================================
-        //
-        // Isso é uma proteção importante.
-        //
-        // Se o salvamento do novo inventário falhar,
-        // restauramos o inventário que estava em memória.
-        //
-        // O IndexedDB também utiliza uma transação,
-        // portanto o inventário anterior deverá continuar
-        // preservado caso a gravação seja abortada.
-        //
-        // ====================================================
 
         const inventarioAnterior =
             materiais;
@@ -359,18 +319,6 @@ async function importarExcel() {
         // ====================================================
         // REMOVER MARCA DE INVENTÁRIO ZERADO
         // ====================================================
-        //
-        // Esta função só é chamada depois que:
-        //
-        // 1. O arquivo foi lido.
-        // 2. Os dados foram processados.
-        // 3. As colunas foram validadas.
-        // 4. O novo inventário foi salvo com sucesso.
-        //
-        // Portanto, uma importação com erro não remove
-        // a marca de inventário zerado.
-        //
-        // ====================================================
 
         desmarcarInventarioZerado();
 
@@ -385,7 +333,15 @@ async function importarExcel() {
             novoInventario.length.toLocaleString(
                 "pt-BR"
             ) +
-            "</strong> materiais processados.</p>";
+            "</strong> materiais processados.</p>" +
+
+            "<br>" +
+
+            "<p>☁️ O inventário foi salvo localmente.</p>" +
+
+            "<button onclick=\"testarEnvioSupabase(materiais)\">" +
+            "🧪 Testar envio para Supabase" +
+            "</button>";
 
 
         // ====================================================
@@ -430,17 +386,343 @@ async function importarExcel() {
 
 
 // ====================================================
-// FUNÇÃO: lerInicioArquivo()
+// FUNÇÃO: testarEnvioSupabase()
 // ====================================================
 //
-// Lê somente os primeiros bytes do arquivo.
+// Envia o inventário processado para o Supabase.
 //
-// Objetivo:
+// IMPORTANTE:
 //
-// descobrir rapidamente se o conteúdo parece HTML,
-// sem precisar carregar os 45 MB do arquivo apenas
-// para fazer a detecção.
+// Esta função é SOMENTE um teste.
 //
+// Ela NÃO substitui o IndexedDB.
+//
+// Ela NÃO apaga dados existentes.
+//
+// Ela NÃO limpa a tabela materiais.
+//
+// Ela somente tenta inserir os materiais enviados.
+//
+// Os materiais são enviados em lotes para evitar
+// uma requisição gigantesca.
+//
+// ====================================================
+
+async function testarEnvioSupabase(
+    inventario
+) {
+
+    // ====================================================
+    // LOCALIZAR RESULTADO
+    // ====================================================
+
+    const resultado =
+        document.getElementById(
+            "resultadoImportacao"
+        );
+
+
+    if (!resultado) {
+
+        console.error(
+            "Elemento resultadoImportacao não encontrado."
+        );
+
+        return;
+    }
+
+
+    // ====================================================
+    // VERIFICAR CLIENTE SUPABASE
+    // ====================================================
+
+    if (
+        !window.clienteSupabase
+    ) {
+
+        resultado.innerHTML =
+            "<p>🔴 Cliente Supabase não encontrado.</p>";
+
+        return;
+    }
+
+
+    // ====================================================
+    // VERIFICAR INVENTÁRIO
+    // ====================================================
+
+    if (
+        !inventario ||
+        inventario.length === 0
+    ) {
+
+        resultado.innerHTML =
+            "<p>❌ Nenhum material disponível para teste.</p>";
+
+        return;
+    }
+
+
+    // ====================================================
+    // TAMANHO DOS LOTES
+    // ====================================================
+    //
+    // Cada requisição enviará 500 materiais.
+    //
+    // Exemplo:
+    //
+    // 92.708 materiais
+    //
+    // aproximadamente 186 requisições.
+    //
+    // ====================================================
+
+    const tamanhoLote = 500;
+
+
+    // ====================================================
+    // CONTADORES
+    // ====================================================
+
+    let enviados = 0;
+
+    const total =
+        inventario.length;
+
+
+    try {
+
+        // ====================================================
+        // DESABILITAR BOTÃO DURANTE O TESTE
+        // ====================================================
+
+        resultado.innerHTML =
+            "<p>☁️ Preparando envio para o Supabase...</p>" +
+            "<p>0 de " +
+            total.toLocaleString("pt-BR") +
+            " materiais enviados.</p>";
+
+
+        // ====================================================
+        // PROCESSAR LOTES
+        // ====================================================
+
+        for (
+            let inicio = 0;
+            inicio < total;
+            inicio += tamanhoLote
+        ) {
+
+            // =================================================
+            // DEFINIR FINAL DO LOTE
+            // =================================================
+
+            const fim =
+                Math.min(
+                    inicio + tamanhoLote,
+                    total
+                );
+
+
+            // =================================================
+            // SEPARAR LOTE
+            // =================================================
+
+            const lote =
+                inventario.slice(
+                    inicio,
+                    fim
+                );
+
+
+            // =================================================
+            // TRANSFORMAR OBJETOS DO PMOBILE
+            // PARA O FORMATO DA TABELA SUPABASE
+            // =================================================
+
+            const dadosSupabase =
+                lote.map(
+                    material => ({
+
+                        codigo:
+                            material.codigo,
+
+                        descricao:
+                            material.descricao,
+
+                        referencia:
+                            material.referencia || null,
+
+                        marca:
+                            material.marca || null,
+
+                        local:
+                            material.local || null,
+
+                        quantidade:
+                            material.quantidade ?? 0,
+
+                        quantidade_reservada:
+                            material.quantidadeReservada ?? 0,
+
+                        disponivel:
+                            material.disponivel ?? 0,
+
+                        ultima_entrada:
+                            material.ultimaEntrada || null
+
+                    })
+                );
+
+
+            // =================================================
+            // ENVIAR LOTE
+            // =================================================
+
+            const resposta =
+                await window.clienteSupabase
+                    .from("materiais")
+                    .insert(
+                        dadosSupabase
+                    );
+
+
+            // =================================================
+            // VERIFICAR ERRO
+            // =================================================
+
+            if (
+                resposta.error
+            ) {
+
+                throw new Error(
+                    "Erro no lote " +
+                    (
+                        Math.floor(
+                            inicio /
+                            tamanhoLote
+                        ) + 1
+                    ) +
+                    ": " +
+                    resposta.error.message
+                );
+
+            }
+
+
+            // =================================================
+            // ATUALIZAR CONTADOR
+            // =================================================
+
+            enviados =
+                fim;
+
+
+            // =================================================
+            // ATUALIZAR TELA
+            // =================================================
+
+            resultado.innerHTML =
+                "<p>☁️ Enviando materiais para o Supabase...</p>" +
+
+                "<p><strong>" +
+                enviados.toLocaleString(
+                    "pt-BR"
+                ) +
+                "</strong> de <strong>" +
+                total.toLocaleString(
+                    "pt-BR"
+                ) +
+                "</strong> materiais enviados.</p>" +
+
+                "<p>📦 Lote: " +
+                (
+                    Math.floor(
+                        inicio /
+                        tamanhoLote
+                    ) + 1
+                ) +
+                "</p>";
+
+
+            // =================================================
+            // PERMITIR ATUALIZAÇÃO DO NAVEGADOR
+            // =================================================
+
+            await permitirAtualizacaoNavegador();
+
+        }
+
+
+        // ====================================================
+        // SUCESSO
+        // ====================================================
+
+        resultado.innerHTML =
+            "<p>🟢 <strong>Teste Supabase concluído!</strong></p>" +
+
+            "<p>" +
+            enviados.toLocaleString(
+                "pt-BR"
+            ) +
+            " materiais enviados com sucesso.</p>" +
+
+            "<p>☁️ Os dados foram gravados na tabela " +
+            "<strong>materiais</strong> do Supabase.</p>" +
+
+            "<p>📱 O IndexedDB do PMOBILE continua funcionando normalmente.</p>";
+
+
+        console.log(
+            "Teste Supabase concluído."
+        );
+
+
+        console.log(
+            "Materiais enviados:",
+            enviados
+        );
+
+
+    } catch (erro) {
+
+        // ====================================================
+        // ERRO NO ENVIO
+        // ====================================================
+
+        console.error(
+            "Erro durante teste Supabase:",
+            erro
+        );
+
+
+        resultado.innerHTML =
+            "<p>🔴 <strong>Erro durante o teste Supabase.</strong></p>" +
+
+            "<p>" +
+            (
+                erro.message ||
+                "Erro desconhecido."
+            ) +
+            "</p>" +
+
+            "<p>Foram enviados " +
+            enviados.toLocaleString(
+                "pt-BR"
+            ) +
+            " de " +
+            total.toLocaleString(
+                "pt-BR"
+            ) +
+            " materiais antes do erro.</p>";
+
+    }
+
+}
+
+
+// ====================================================
+// FUNÇÃO: lerInicioArquivo()
 // ====================================================
 
 function lerInicioArquivo(arquivo) {
@@ -488,10 +770,6 @@ function lerInicioArquivo(arquivo) {
                 };
 
 
-            // =================================================
-            // O DOGO utiliza texto compatível com Windows-1252.
-            // =================================================
-
             leitor.readAsText(
                 blob,
                 "windows-1252"
@@ -505,17 +783,6 @@ function lerInicioArquivo(arquivo) {
 
 // ====================================================
 // FUNÇÃO: detectarHTML()
-// ====================================================
-//
-// Recebe o começo do arquivo e verifica se ele possui
-// características de uma tabela HTML.
-//
-// O arquivo do DOGO começa com:
-//
-//     <table border='1'>
-//
-// Portanto será identificado corretamente.
-//
 // ====================================================
 
 function detectarHTML(conteudo) {
@@ -547,31 +814,8 @@ function detectarHTML(conteudo) {
 // ====================================================
 // FUNÇÃO: processarArquivoHTML()
 // ====================================================
-//
-// Processa o formato utilizado pelo DOGO:
-//
-//     arquivo .xls
-//          ↓
-//     conteúdo HTML
-//          ↓
-//     tabela <table>
-//          ↓
-//     linhas <tr>
-//          ↓
-//     células <td>/<th>
-//
-// NÃO utilizamos XLSX.read() neste caminho.
-//
-// Isso evita criar uma estrutura de workbook gigantesca
-// para um arquivo HTML de aproximadamente 45 MB.
-//
-// ====================================================
 
 async function processarArquivoHTML(arquivo) {
-
-    // ====================================================
-    // LER O ARQUIVO COMO TEXTO
-    // ====================================================
 
     const texto =
         await lerArquivoComoTexto(
@@ -601,21 +845,7 @@ async function processarArquivoHTML(arquivo) {
 
 
     // ====================================================
-    // LOCALIZAR TODAS AS LINHAS DA TABELA
-    // ====================================================
-    //
-    // O arquivo do DOGO possui uma estrutura semelhante a:
-    //
-    // <tr>
-    //     <th>Produto</th>
-    //     ...
-    // </tr>
-    //
-    // <tr>
-    //     <td>...</td>
-    //     ...
-    // </tr>
-    //
+    // LOCALIZAR LINHAS DA TABELA
     // ====================================================
 
     const regexLinha =
@@ -649,7 +879,7 @@ async function processarArquivoHTML(arquivo) {
 
 
     // ====================================================
-    // PROCESSAR UMA LINHA POR VEZ
+    // PROCESSAR LINHA POR LINHA
     // ====================================================
 
     while (
@@ -663,9 +893,9 @@ async function processarArquivoHTML(arquivo) {
             linhaEncontrada[1];
 
 
-        // ================================================
+        // =================================================
         // EXTRAIR CÉLULAS
-        // ================================================
+        // =================================================
 
         const celulas =
             extrairCelulasHTML(
@@ -758,13 +988,6 @@ async function processarArquivoHTML(arquivo) {
         // =================================================
         // ATUALIZAR PROGRESSO
         // =================================================
-        //
-        // Não atualizamos a tela em todas as 92 mil linhas,
-        // pois isso deixaria o navegador ainda mais pesado.
-        //
-        // Atualizamos aproximadamente a cada 1.000 linhas.
-        //
-        // =================================================
 
         if (
             novoInventario.length % 1000 === 0
@@ -775,6 +998,7 @@ async function processarArquivoHTML(arquivo) {
                 novoInventario.length
             );
 
+
             await permitirAtualizacaoNavegador();
 
         }
@@ -783,13 +1007,7 @@ async function processarArquivoHTML(arquivo) {
 
 
     // ====================================================
-    // LIBERAR REFERÊNCIA DO TEXTO
-    // ====================================================
-    //
-    // Não podemos forçar o Garbage Collector do navegador,
-    // mas ao sair desta função a variável deixará de ser
-    // utilizada.
-    //
+    // DIAGNÓSTICOS
     // ====================================================
 
     console.log(
@@ -822,13 +1040,6 @@ async function processarArquivoHTML(arquivo) {
 
 // ====================================================
 // FUNÇÃO: lerArquivoComoTexto()
-// ====================================================
-//
-// Lê o arquivo inteiro como texto utilizando Windows-1252.
-//
-// Esse é o formato de texto encontrado no arquivo
-// exportado pelo DOGO.
-//
 // ====================================================
 
 function lerArquivoComoTexto(arquivo) {
@@ -876,22 +1087,6 @@ function lerArquivoComoTexto(arquivo) {
 // ====================================================
 // FUNÇÃO: extrairCelulasHTML()
 // ====================================================
-//
-// Extrai o conteúdo de <th> e <td> de uma linha.
-//
-// Exemplo:
-//
-// <td>74778</td>
-// <td>FILTRO AR</td>
-//
-// vira:
-//
-// [
-//     "74778",
-//     "FILTRO AR"
-// ]
-//
-// ====================================================
 
 function extrairCelulasHTML(conteudoLinha) {
 
@@ -929,19 +1124,6 @@ function extrairCelulasHTML(conteudoLinha) {
 // ====================================================
 // FUNÇÃO: limparTextoHTML()
 // ====================================================
-//
-// Remove tags HTML e transforma entidades HTML em texto.
-//
-// Exemplos:
-//
-//     &nbsp;
-//     &amp;
-//     &lt;
-//     &gt;
-//
-// Também remove espaços desnecessários nas extremidades.
-//
-// ====================================================
 
 function limparTextoHTML(valor) {
 
@@ -952,7 +1134,7 @@ function limparTextoHTML(valor) {
 
 
     // ====================================================
-    // CONVERTER QUEBRAS DE LINHA
+    // QUEBRAS DE LINHA
     // ====================================================
 
     texto =
@@ -963,7 +1145,7 @@ function limparTextoHTML(valor) {
 
 
     // ====================================================
-    // REMOVER OUTRAS TAGS HTML
+    // REMOVER TAGS
     // ====================================================
 
     texto =
@@ -974,7 +1156,7 @@ function limparTextoHTML(valor) {
 
 
     // ====================================================
-    // CONVERTER ENTIDADES HTML
+    // ENTIDADES HTML
     // ====================================================
 
     texto =
@@ -1070,18 +1252,6 @@ function limparTextoHTML(valor) {
 // ====================================================
 // FUNÇÃO: validarCabecalhos()
 // ====================================================
-//
-// Verifica se a planilha possui as colunas obrigatórias
-// para o PMOBILE.
-//
-// Obrigatórias:
-//
-//     Produto
-//     Descricao / Descrição
-//     Qtde. Est.
-//     Qtde. Rsr.
-//
-// ====================================================
 
 function validarCabecalhos(cabecalhos) {
 
@@ -1155,17 +1325,6 @@ function validarCabecalhos(cabecalhos) {
 
 // ====================================================
 // FUNÇÃO: processarArquivoExcel()
-// ====================================================
-//
-// Processa arquivos Excel verdadeiros utilizando SheetJS.
-//
-// Esse caminho continua disponível para:
-//
-//     .xlsx
-//     .xls verdadeiro
-//
-// O .xls HTML do DOGO não passa por aqui.
-//
 // ====================================================
 
 async function processarArquivoExcel(arquivo) {
@@ -1311,23 +1470,6 @@ async function processarArquivoExcel(arquivo) {
 // ====================================================
 // FUNÇÃO: criarMaterial()
 // ====================================================
-//
-// Converte uma linha da planilha em um objeto de material
-// utilizado pelo PMOBILE.
-//
-// Campos:
-//
-//     codigo
-//     descricao
-//     referencia
-//     marca
-//     local
-//     quantidade
-//     quantidadeReservada
-//     disponivel
-//     ultimaEntrada
-//
-// ====================================================
 
 function criarMaterial(linha) {
 
@@ -1428,12 +1570,6 @@ function criarMaterial(linha) {
     // ====================================================
     // QUANTIDADE DISPONÍVEL
     // ====================================================
-    //
-    // Disponível =
-    //
-    // estoque total - quantidade reservada
-    //
-    // ====================================================
 
     const disponivel =
         estoqueTotal -
@@ -1480,20 +1616,6 @@ function criarMaterial(linha) {
 
 // ====================================================
 // FUNÇÃO: converterNumero()
-// ====================================================
-//
-// Converte valores da planilha para número.
-//
-// O arquivo do DOGO utiliza valores como:
-//
-//     0.00
-//     3.320
-//
-// Também tratamos espaços extras.
-//
-// Se o valor não puder ser convertido,
-// retornamos 0.
-//
 // ====================================================
 
 function converterNumero(valor) {
@@ -1555,11 +1677,7 @@ function converterNumero(valor) {
 // ====================================================
 //
 // Permite que o navegador tenha uma pequena oportunidade
-// de atualizar a interface durante o processamento de
-// milhares de linhas.
-//
-// Isso é especialmente importante no arquivo do DOGO,
-// que possui aproximadamente 92 mil registros.
+// de atualizar a interface.
 //
 // ====================================================
 
