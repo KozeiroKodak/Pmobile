@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Relação de estoque CBA RS</title>
+</head>
+
+<body>
+
+    <!-- ========================================= -->
+    <!-- TELA 1: INÍCIO                             -->
+    <!-- Primeira tela exibida ao abrir o sistema  -->
+    <!-- ========================================= -->
+    <div id="inicio">
+
+        <h1>PMOBILE - ESTOQUE</h1>
+
+        <p>
+            Relação de estoque e contagem CBA DIESEL RS.
+        </p>
+
+        <button onclick="abrirSistema()">
+            Iniciar
+        </button>
+
+    </div>
+
+
+    <!-- ========================================= -->
+    <!-- TELA 2: MENU PRINCIPAL                     -->
+    <!-- Fica escondida até clicar em Iniciar      -->
+    <!-- ========================================= -->
+    <div id="sistema" style="display: none;">
+
+        <h1>Menu Principal</h1>
+
+        <button onclick="abrirPesquisa()">
+            🔎 Pesquisar material
+        </button>
+
+        <button onclick="abrirImportacao()">
+            📦 Importar inventário
+        </button>
+
+        <button onclick="abrirConferencia()">
+            📋 Conferência
+        </button>
+
+        <button onclick="abrirConferencias()">
+            🗂️ Conferências
+        </button>
+
+        <button onclick="abrirDivergencias()">
+            ⚠️ Divergências
+        </button>
+
+    </div>
+
+
+    <!-- ========================================= -->
+    <!-- TELA 3: PESQUISA                           -->
+    <!-- Permite pesquisar materiais separadamente  -->
+    <!-- por código, descrição ou referência.      -->
+    <!--                                             -->
+    <!-- Cada campo possui sua própria pesquisa.   -->
+    <!-- O resultado de uma pesquisa não interfere -->
+    <!-- nos outros campos.                         -->
+    <!-- ========================================= -->
+    <div id="pesquisa" style="display: none;">
+
+        <h1>🔎 Pesquisar material</h1>
+
+
+        <!-- ========================================= -->
+        <!-- PESQUISA POR CÓDIGO                       -->
+        <!-- Procura SOMENTE no código do material.   -->
+        <!-- ========================================= -->
+
+        <h3>🔢 Código</h3>
+
+        <input
+            type="text"
+            id="campoPesquisaCodigo"
+            placeholder="Digite o código"
+        >
+
+        <button onclick="pesquisarPorCodigo()">
+            Pesquisar
+        </button>
+
+        <div id="resultadoPesquisaCodigo"></div>
+
+
+        <br><br>
+
+
+        <!-- ========================================= -->
+        <!-- PESQUISA POR DESCRIÇÃO                    -->
+        <!-- Procura SOMENTE na descrição do material. -->
+        <!-- ========================================= -->
+
+        <h3>📝 Descrição</h3>
+
+        <input
+            type="text"
+            id="campoPesquisaDescricao"
+            placeholder="Digite a descrição"
+        >
+
+        <button onclick="pesquisarPorDescricao()">
+            Pesquisar
+        </button>
+
+        <div id="resultadoPesquisaDescricao"></div>
+
+
+        <br><br>
+
+
+        <!-- ========================================= -->
+        <!-- PESQUISA POR REFERÊNCIA                   -->
+        <!-- Procura SOMENTE na referência do material. -->
+        <!-- ========================================= -->
+
+        <h3>📚 Referência</h3>
+
+        <input
+            type="text"
+            id="campoPesquisaReferencia"
+            placeholder="Digite a referência"
+        >
+
+        <button onclick="pesquisarPorReferencia()">
+            Pesquisar
+        </button>
+
+        <div id="resultadoPesquisaReferencia"></div>
+
+
+        <br><br>
+
+
+        <!-- ========================================= -->
+        <!-- VOLTAR AO MENU                            -->
+        <!-- ========================================= -->
+
+        <button onclick="voltarMenu()">
+            Voltar
+        </button>
+
+    </div>
+
+
+    <!-- ========================================= -->
+    <!-- TELA 4: CONFERÊNCIA                        -->
+    <!-- Permite selecionar um material e registrar -->
+    <!-- a quantidade física encontrada no estoque -->
+    <!-- ========================================= -->
+    <div id="conferencia" style="display: none;">
+
+        <h1>📋 Conferência</h1>
+
+        <input
+            type="text"
+            id="campoConferencia"
+            placeholder="Código ou descrição"
+        >
+
+        <button onclick="buscarMaterialConferencia()">
+            Buscar
+        </button>
+
+        <div id="resultadoConferencia"></div>
+
+        <button onclick="voltarMenuConferencia()">
+            Voltar
+        </button>
+
+    </div>
+
+
+    <!-- ========================================= -->
+    <!-- TELA 5: CONFERÊNCIAS REALIZADAS            -->
+    <!-- Mostra o histórico de contagens feitas    -->
+    <!-- ========================================= -->
+    <div id="conferencias" style="display: none;">
+
+        <h1>🗂️ Conferências Realizadas</h1>
+
+        <div id="resultadoConferencias"></div>
+
+        <button onclick="voltarMenuConferencias()">
+            Voltar
+        </button>
+
+    </div>
+
+
+    <!-- ========================================= -->
+    <!-- TELA 6: DIVERGÊNCIAS                       -->
+    <!-- Mostra somente itens com diferença        -->
+    <!-- ========================================= -->
+    <div id="divergencias" style="display: none;">
+
+        <h1>⚠️ Divergências</h1>
+
+        <div id="resultadoDivergencias"></div>
+
+        <button onclick="voltarMenuDivergencias()">
+            Voltar
+        </button>
+
+    </div>
+
+
+    <!-- ========================================= -->
+    <!-- TELA 7: IMPORTAÇÃO DE INVENTÁRIO           -->
+    <!-- Permite importar o arquivo Excel do DOGO  -->
+    <!-- ========================================= -->
+    <div id="importacao" style="display: none;">
+
+        <h1>📦 Importar inventário</h1>
+
+        <p>
+            Selecione o arquivo Excel exportado do DOGO.
+        </p>
+
+        <input
+            type="file"
+            id="arquivoExcel"
+            accept=".xlsx, .xls"
+        >
+
+        <br><br>
+
+
+        <!-- ========================================= -->
+        <!-- BOTÃO: IMPORTAR PLANILHA                   -->
+        <!-- Inicia o processamento do arquivo.        -->
+        <!-- ========================================= -->
+
+        <button onclick="importarExcel()">
+            Importar planilha
+        </button>
+
+        <br><br>
+
+
+        <!-- ========================================= -->
+        <!-- BOTÃO: ZERAR INVENTÁRIO                    -->
+        <!-- Abre o modal de confirmação.              -->
+        <!-- Nenhum dado é apagado neste momento.     -->
+        <!-- ========================================= -->
+
+        <button onclick="abrirModalZerarInventario()">
+            🗑️ Zerar inventário
+        </button>
+
+
+        <!-- ========================================= -->
+        <!-- RESULTADO DA IMPORTAÇÃO / ZERAMENTO       -->
+        <!-- Mostra mensagens de sucesso e erro.      -->
+        <!-- ========================================= -->
+
+        <div id="resultadoImportacao"></div>
+
+
+        <!-- ========================================= -->
+        <!-- MODAL: ZERAR INVENTÁRIO                   -->
+        <!-- Fica oculto até clicar no botão           -->
+        <!-- "Zerar inventário".                      -->
+        <!-- ========================================= -->
+
+        <div
+            id="modalZerarInventario"
+            style="display: none;"
+        >
+
+            <h2>🗑️ Zerar inventário</h2>
+
+
+            <!-- Aviso ao usuário -->
+
+            <p>
+                ⚠️ <strong>Atenção!</strong>
+            </p>
+
+            <p>
+                Todos os materiais serão removidos
+                do inventário.
+            </p>
+
+
+            <!-- Pergunta sobre as conferências -->
+
+            <p>
+                <strong>
+                    Apagar conferências também?
+                </strong>
+            </p>
+
+
+            <!-- ========================================= -->
+            <!-- BOTÃO NÃO                                -->
+            <!-- Zera o inventário, mas mantém as        -->
+            <!-- conferências existentes.                -->
+            <!-- ========================================= -->
+
+            <button onclick="confirmarZeramento(false)">
+                NÃO
+            </button>
+
+
+            <!-- ========================================= -->
+            <!-- BOTÃO SIM                                -->
+            <!-- Zera o inventário e também apaga as     -->
+            <!-- conferências.                            -->
+            <!-- ========================================= -->
+
+            <button onclick="confirmarZeramento(true)">
+                SIM
+            </button>
+
+
+            <br><br>
+
+
+            <!-- ========================================= -->
+            <!-- BOTÃO CANCELAR                            -->
+            <!-- Fecha o modal sem alterar nenhum dado.  -->
+            <!-- ========================================= -->
+
+            <button onclick="fecharModalZerarInventario()">
+                CANCELAR
+            </button>
+
+        </div>
+
+
+        <!-- ========================================= -->
+        <!-- VOLTAR AO MENU                            -->
+        <!-- ========================================= -->
+
+        <br><br>
+
+        <button onclick="voltarMenuImportacao()">
+            Voltar
+        </button>
+
+    </div>
+
+
+    <!-- ========================================= -->
+    <!-- SCRIPTS                                   -->
+    <!-- ========================================= -->
+
+   <!-- Biblioteca oficial do Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- Configuração do PMOBILE para conexão com Supabase -->
+<script src="supabase.js"></script>
+
+<script src="dados.js"></script>
+<script src="conferencias.js"></script>
+<script src="pesquisa.js"></script>
+<script src="conferencia.js"></script>
+<script src="conferenciasRealizadas.js"></script>
+<script src="bancoImportacao.js"></script>
+<script src="importacao.js"></script>
+<script src="divergencias.js"></script>
+<script src="script.js"></script>
+
+</body>
+</html>
