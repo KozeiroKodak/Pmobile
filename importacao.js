@@ -309,6 +309,8 @@ function analisarMaterialImportado(
 //
 // ====================================================
 async function importarExcel() {
+    iniciarDiagnosticoImportacao();
+    //
     // ====================================================
     // LOCALIZAR ELEMENTOS DA TELA
     // ====================================================
@@ -1059,6 +1061,10 @@ async function processarArquivoHTML(arquivo) {
             criarMaterial(
                 linha
             );
+            analisarMaterialImportado(
+                material,
+                quantidadeLinhas
+                );
         novoInventario.push(
             material
         );
