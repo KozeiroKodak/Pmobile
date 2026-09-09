@@ -58,6 +58,341 @@
 
 let importacaoSupabaseEmAndamento = false;
 
+// ====================================================
+// DIAGNÓSTICO DA IMPORTAÇÃO
+// ====================================================
+//
+// Guarda as informações encontradas durante a leitura
+// da planilha.
+//
+// Essas informações pertencem somente à importação atual.
+//
+// ====================================================
+
+let diagnosticoImportacao = {
+    total: 0,
+    ok: 0,
+    observacoes: [],
+    erros: [],
+    codigosEncontrados: new Map()
+};
+
+// ====================================================
+// FUNÇÃO: iniciarDiagnosticoImportacao()
+// ====================================================
+//
+// OBJETIVO:
+//
+// Limpar o diagnóstico anterior e iniciar uma nova
+// análise para a planilha atual.
+//
+// Essa função deve ser chamada uma vez no início
+// de cada importação.
+//
+// ====================================================
+
+function iniciarDiagnosticoImportacao() {
+
+    diagnosticoImportacao = {
+
+        total: 0,
+
+        ok: 0,
+
+        observacoes: [],
+
+        erros: [],
+
+        codigosEncontrados:
+            new Map()
+
+    };
+
+}
+
+// ====================================================
+// FUNÇÃO: analisarMaterialImportado()
+// ====================================================
+//
+// OBJETIVO:
+//
+// Analisar cada material que foi convertido da
+// planilha para o formato do PMOBILE.
+//
+// CLASSIFICAÇÃO:
+//
+// 🟢 OK
+// Registro sem problemas.
+//
+// 🟡 OBSERVAÇÃO
+// Registro utilizável, mas com informações incompletas.
+//
+// 🔴 ERRO
+// Registro com alguma inconsistência que merece
+// investigação.
+//
+// IMPORTANTE:
+//
+// Nesta primeira versão, a classificação NÃO impede
+// a importação.
+//
+// Estamos apenas identificando os casos existentes.
+//
+// ====================================================
+
+function analisarMaterialImportado(
+    material,
+    numeroRegistro
+) {
+
+    diagnosticoImportacao.total++;
+
+
+    let possuiObservacao =
+        false;
+
+    let possuiErro =
+        false;
+
+
+
+    // ====================================================
+    // CÓDIGO VAZIO
+    // ====================================================
+
+    if (
+        !material.codigo ||
+        String(
+            material.codigo
+        ).trim() === ""
+    ) {
+
+        possuiObservacao = true;
+
+        diagnosticoImportacao.observacoes.push(
+            "Registro " +
+            numeroRegistro +
+            ": código vazio."
+        );
+
+    } else {
+
+        const codigo =
+            String(
+                material.codigo
+            ).trim();
+
+
+        // ================================================
+        // VERIFICAR CÓDIGO DUPLICADO
+        // ================================================
+
+        if (
+            diagnosticoImportacao.codigosEncontrados.has(
+                codigo
+            )
+        ) {
+
+            const registroAnterior =
+                diagnosticoImportacao
+                    .codigosEncontrados
+                    .get(
+                        codigo
+                    );
+
+
+            possuiErro = true;
+
+
+            diagnosticoImportacao.erros.push(
+                "Registro " +
+                numeroRegistro +
+                ": código " +
+                codigo +
+                " duplicado. " +
+                "Também aparece no registro " +
+                registroAnterior +
+                "."
+            );
+
+        } else {
+
+            diagnosticoImportacao
+                .codigosEncontrados
+                .set(
+                    codigo,
+                    numeroRegistro
+                );
+
+        }
+
+    }
+
+
+
+    // ====================================================
+    // DESCRIÇÃO VAZIA
+    // ====================================================
+
+    if (
+        !material.descricao ||
+        String(
+            material.descricao
+        ).trim() === ""
+    ) {
+
+        possuiObservacao = true;
+
+        diagnosticoImportacao.observacoes.push(
+            "Registro " +
+            numeroRegistro +
+            ": descrição vazia."
+        );
+
+    }
+
+
+
+    // ====================================================
+    // REFERÊNCIA VAZIA
+    // ====================================================
+
+    if (
+        !material.referencia ||
+        String(
+            material.referencia
+        ).trim() === ""
+    ) {
+
+        possuiObservacao = true;
+
+        diagnosticoImportacao.observacoes.push(
+            "Registro " +
+            numeroRegistro +
+            ": referência vazia."
+        );
+
+    }
+
+
+
+    // ====================================================
+    // MARCA VAZIA
+    // ====================================================
+
+    if (
+        !material.marca ||
+        String(
+            material.marca
+        ).trim() === ""
+    ) {
+
+        possuiObservacao = true;
+
+        diagnosticoImportacao.observacoes.push(
+            "Registro " +
+            numeroRegistro +
+            ": marca vazia."
+        );
+
+    }
+
+
+
+    // ====================================================
+    // LOCAL VAZIO
+    // ====================================================
+
+    if (
+        !material.local ||
+        String(
+            material.local
+        ).trim() === ""
+    ) {
+
+        possuiObservacao = true;
+
+        diagnosticoImportacao.observacoes.push(
+            "Registro " +
+            numeroRegistro +
+            ": local vazio."
+        );
+
+    }
+
+
+
+    // ====================================================
+    // QUANTIDADE INVÁLIDA
+    // ====================================================
+
+    if (
+        typeof material.quantidade !== "number" ||
+        !Number.isFinite(
+            material.quantidade
+        )
+    ) {
+
+        possuiErro = true;
+
+        diagnosticoImportacao.erros.push(
+            "Registro " +
+            numeroRegistro +
+            ": quantidade inválida."
+        );
+
+    }
+
+
+
+    // ====================================================
+    // QUANTIDADE RESERVADA INVÁLIDA
+    // ====================================================
+
+    if (
+        typeof material.quantidadeReservada !== "number" ||
+        !Number.isFinite(
+            material.quantidadeReservada
+        )
+    ) {
+
+        possuiErro = true;
+
+        diagnosticoImportacao.erros.push(
+            "Registro " +
+            numeroRegistro +
+            ": quantidade reservada inválida."
+        );
+
+    }
+
+
+
+    // ====================================================
+    // CLASSIFICAÇÃO FINAL
+    // ====================================================
+
+    if (
+        possuiErro
+    ) {
+
+        return;
+
+    }
+
+
+    if (
+        possuiObservacao
+    ) {
+
+        return;
+
+    }
+
+
+    diagnosticoImportacao.ok++;
+
+}
 
 // ====================================================
 // FUNÇÃO: importarExcel()
