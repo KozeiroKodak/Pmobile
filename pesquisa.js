@@ -39,39 +39,18 @@
 // PESQUISA POR CÓDIGO
 // ==================================================
 //
-// Função: pesquisarPorCodigo()
-//
-// Responsabilidade:
-//
-// Obtém o texto digitado no campo de Código
-// e procura esse texto SOMENTE dentro do
-// campo "codigo" dos materiais.
-//
-// Exemplo:
-//
-// Campo Código:
-// 3692
-//
-// Poderá encontrar:
-//
-// 3692
-// 3692P
-// 3692-01
-//
-// Mesmo que "3692" apareça na descrição
-// ou referência de outro material, ele NÃO
-// será apresentado por essa pesquisa.
+// Agora a pesquisa é feita DIRETAMENTE
+// no Supabase.
 //
 // ==================================================
 
-function pesquisarPorCodigo() {
+async function pesquisarPorCodigo() {
 
     const busca =
         document
             .getElementById("campoPesquisaCodigo")
             .value
-            .trim()
-            .toLowerCase();
+            .trim();
 
 
     const areaResultado =
@@ -94,65 +73,99 @@ function pesquisarPorCodigo() {
 
 
     // ----------------------------------------------
-    // Pesquisa SOMENTE no código.
+    // Verifica se o cliente Supabase existe.
     // ----------------------------------------------
 
-    const resultados =
-        materiais.filter(material =>
+    if (!window.clienteSupabase) {
 
-            String(
-                material.codigo || ""
-            )
-            .toLowerCase()
-            .includes(busca)
+        areaResultado.innerHTML =
+            "<p>🔴 Conexão com o Supabase não encontrada.</p>";
 
+        return;
+    }
+
+
+    // ----------------------------------------------
+    // Mostra que a pesquisa está sendo realizada.
+    // ----------------------------------------------
+
+    areaResultado.innerHTML =
+        "<p>🔎 Pesquisando...</p>";
+
+
+    try {
+
+        // ------------------------------------------
+        // Pesquisa SOMENTE no campo codigo.
+        //
+        // ilike = não diferencia maiúsculas
+        // e minúsculas.
+        //
+        // %texto% = pesquisa parcial.
+        // ------------------------------------------
+
+        const resposta =
+            await window.clienteSupabase
+                .from("materiais")
+                .select(
+                    "id,codigo,descricao,referencia,marca,local,quantidade"
+                )
+                .ilike(
+                    "codigo",
+                    "%" + busca + "%"
+                )
+                .order(
+                    "codigo",
+                    { ascending: true }
+                );
+
+
+        // ------------------------------------------
+        // Verifica erro do Supabase.
+        // ------------------------------------------
+
+        if (resposta.error) {
+
+            throw resposta.error;
+        }
+
+
+        // ------------------------------------------
+        // Exibe os resultados.
+        // ------------------------------------------
+
+        exibirResultadosPesquisa(
+            resposta.data || [],
+            areaResultado
         );
 
+    } catch (erro) {
 
-    // ----------------------------------------------
-    // Exibe os resultados encontrados.
-    // ----------------------------------------------
+        console.error(
+            "Erro na pesquisa por código:",
+            erro
+        );
 
-    exibirResultadosPesquisa(
-        resultados,
-        areaResultado
-    );
+        areaResultado.innerHTML =
+            "<p>🔴 Erro ao pesquisar no Supabase.</p>" +
+            "<p>" +
+            (erro.message || "Erro desconhecido.") +
+            "</p>";
+    }
 }
 
 
 // ==================================================
 // PESQUISA POR DESCRIÇÃO
 // ==================================================
-//
-// Função: pesquisarPorDescricao()
-//
-// Responsabilidade:
-//
-// Obtém o texto digitado no campo de Descrição
-// e procura esse texto SOMENTE dentro do
-// campo "descricao" dos materiais.
-//
-// Exemplo:
-//
-// Campo Descrição:
-// filtro
-//
-// Encontrará materiais cuja descrição contenha
-// a palavra "filtro".
-//
-// O código, referência e marca não participam
-// dessa pesquisa.
-//
-// ==================================================
 
-function pesquisarPorDescricao() {
+async function pesquisarPorDescricao() {
 
     const busca =
         document
             .getElementById("campoPesquisaDescricao")
             .value
-            .trim()
-            .toLowerCase();
+            .trim();
 
 
     const areaResultado =
@@ -175,68 +188,82 @@ function pesquisarPorDescricao() {
 
 
     // ----------------------------------------------
-    // Pesquisa SOMENTE na descrição.
+    // Verifica se o cliente Supabase existe.
     // ----------------------------------------------
 
-    const resultados =
-        materiais.filter(material =>
+    if (!window.clienteSupabase) {
 
-            String(
-                material.descricao || ""
-            )
-            .toLowerCase()
-            .includes(busca)
+        areaResultado.innerHTML =
+            "<p>🔴 Conexão com o Supabase não encontrada.</p>";
 
+        return;
+    }
+
+
+    areaResultado.innerHTML =
+        "<p>🔎 Pesquisando...</p>";
+
+
+    try {
+
+        // ------------------------------------------
+        // Pesquisa SOMENTE na descrição.
+        // ------------------------------------------
+
+        const resposta =
+            await window.clienteSupabase
+                .from("materiais")
+                .select(
+                    "id,codigo,descricao,referencia,marca,local,quantidade"
+                )
+                .ilike(
+                    "descricao",
+                    "%" + busca + "%"
+                )
+                .order(
+                    "descricao",
+                    { ascending: true }
+                );
+
+
+        if (resposta.error) {
+
+            throw resposta.error;
+        }
+
+
+        exibirResultadosPesquisa(
+            resposta.data || [],
+            areaResultado
         );
 
+    } catch (erro) {
 
-    // ----------------------------------------------
-    // Exibe os resultados encontrados.
-    // ----------------------------------------------
+        console.error(
+            "Erro na pesquisa por descrição:",
+            erro
+        );
 
-    exibirResultadosPesquisa(
-        resultados,
-        areaResultado
-    );
+        areaResultado.innerHTML =
+            "<p>🔴 Erro ao pesquisar no Supabase.</p>" +
+            "<p>" +
+            (erro.message || "Erro desconhecido.") +
+            "</p>";
+    }
 }
 
 
 // ==================================================
 // PESQUISA POR REFERÊNCIA
 // ==================================================
-//
-// Função: pesquisarPorReferencia()
-//
-// Responsabilidade:
-//
-// Obtém o texto digitado no campo de Referência
-// e procura esse texto SOMENTE dentro do
-// campo "referencia" dos materiais.
-//
-// Exemplo:
-//
-// Campo Referência:
-// ABC
-//
-// Encontrará referências como:
-//
-// ABC
-// ABC-123
-// 123-ABC
-//
-// A pesquisa não verifica código, descrição
-// ou marca.
-//
-// ==================================================
 
-function pesquisarPorReferencia() {
+async function pesquisarPorReferencia() {
 
     const busca =
         document
             .getElementById("campoPesquisaReferencia")
             .value
-            .trim()
-            .toLowerCase();
+            .trim();
 
 
     const areaResultado =
@@ -259,29 +286,74 @@ function pesquisarPorReferencia() {
 
 
     // ----------------------------------------------
-    // Pesquisa SOMENTE na referência.
+    // Verifica se o cliente Supabase existe.
     // ----------------------------------------------
 
-    const resultados =
-        materiais.filter(material =>
+    if (!window.clienteSupabase) {
 
-            String(
-                material.referencia || ""
-            )
-            .toLowerCase()
-            .includes(busca)
+        areaResultado.innerHTML =
+            "<p>🔴 Conexão com o Supabase não encontrada.</p>";
 
+        return;
+    }
+
+
+    areaResultado.innerHTML =
+        "<p>🔎 Pesquisando...</p>";
+
+
+    try {
+
+        // ------------------------------------------
+        // Pesquisa SOMENTE na referência.
+        //
+        // A coluna referencia possui valores null
+        // em alguns materiais.
+        //
+        // O Supabase simplesmente não retornará
+        // esses registros quando procurarmos texto.
+        // ------------------------------------------
+
+        const resposta =
+            await window.clienteSupabase
+                .from("materiais")
+                .select(
+                    "id,codigo,descricao,referencia,marca,local,quantidade"
+                )
+                .ilike(
+                    "referencia",
+                    "%" + busca + "%"
+                )
+                .order(
+                    "referencia",
+                    { ascending: true }
+                );
+
+
+        if (resposta.error) {
+
+            throw resposta.error;
+        }
+
+
+        exibirResultadosPesquisa(
+            resposta.data || [],
+            areaResultado
         );
 
+    } catch (erro) {
 
-    // ----------------------------------------------
-    // Exibe os resultados encontrados.
-    // ----------------------------------------------
+        console.error(
+            "Erro na pesquisa por referência:",
+            erro
+        );
 
-    exibirResultadosPesquisa(
-        resultados,
-        areaResultado
-    );
+        areaResultado.innerHTML =
+            "<p>🔴 Erro ao pesquisar no Supabase.</p>" +
+            "<p>" +
+            (erro.message || "Erro desconhecido.") +
+            "</p>";
+    }
 }
 
 
@@ -289,28 +361,11 @@ function pesquisarPorReferencia() {
 // EXIBIR RESULTADOS DA PESQUISA
 // ==================================================
 //
-// Função: exibirResultadosPesquisa()
+// Essa função continua sendo responsável
+// SOMENTE pela apresentação dos resultados.
 //
-// Responsabilidade:
-//
-// Recebe:
-// - A lista de materiais encontrados
-// - A área HTML onde os resultados devem
-//   ser apresentados
-//
-// Essa função é compartilhada pelas três
-// pesquisas.
-//
-// Ela NÃO realiza a pesquisa.
-//
-// Quem decide onde pesquisar são:
-//
-// - pesquisarPorCodigo()
-// - pesquisarPorDescricao()
-// - pesquisarPorReferencia()
-//
-// Essa função apenas apresenta os materiais
-// encontrados.
+// Agora ela recebe os registros vindos
+// diretamente do Supabase.
 //
 // ==================================================
 
