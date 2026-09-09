@@ -43,7 +43,7 @@
 // ============================================================
 
 const SUPABASE_URL =
-    "https://rxyvllbebtgbfbqoimwe.supabase.co";
+    "https://rxyvllbebtgbfbqoimwe.supabase.co/rest/v1/";
 
 
 // ============================================================
@@ -62,7 +62,7 @@ const SUPABASE_URL =
 // ============================================================
 
 const SUPABASE_PUBLISHABLE_KEY =
-    "sb_publishable_Ckh6ls7eIh_11wviMlCQ_25Oes0QF";
+    "sb_publishable_Ckh6ls7eIh_11wviwxMlCQ_25Oes0QF";
 
 
 
