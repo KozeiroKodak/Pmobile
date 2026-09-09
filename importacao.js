@@ -1378,16 +1378,22 @@ async function processarArquivoExcel(arquivo) {
     // PROCESSAR LINHAS
     // ====================================================
     linhas.forEach(
-        linha => {
-            novoInventario.push(
-                criarMaterial(
+        linha, 
+        indice
+    ) => {
+            const material =
+                criarmaterial(
                     linha
-                )
+                    );
+        analisarmaterialimportado(
+            material,
+            indice + 2
             );
-        }
+        novoinventario.push(
+            material
+            );
+    }
     );
-    return novoInventario;
-}
 // ====================================================
 // FUNÇÃO: criarMaterial()
 // ====================================================
