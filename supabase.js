@@ -43,7 +43,7 @@
 // ============================================================
 
 const SUPABASE_URL =
-    "https://rxyvllbebtgbfbqoimwe.supabase.co/rest/v1/";
+    "https://rxyvllbebtgbfbqoimwe.supabase.co";
 
 
 // ============================================================
