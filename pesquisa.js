@@ -1,385 +1,256 @@
-// ==================================================
-// FUNÇÕES DE PESQUISA
-// ==================================================
-//
-// Responsável pela tela "Pesquisar material".
-//
-// A pesquisa é dividida em três campos
-// independentes:
-//
+// =========================================
+// PMOBILE - PESQUISA
+// =========================================
+// Pesquisa diretamente no Supabase.
+// Campos de pesquisa:
 // 1. Código
 // 2. Descrição
 // 3. Referência
 //
-// Cada campo possui sua própria função.
-//
-// IMPORTANTE:
-//
-// A pesquisa por Código procura SOMENTE
-// no código do material.
-//
-// A pesquisa por Descrição procura SOMENTE
-// na descrição do material.
-//
-// A pesquisa por Referência procura SOMENTE
-// na referência do material.
-//
-// Marca, Local e Quantidade NÃO participam
-// da pesquisa.
-//
-// A busca é:
-// - Parcial
-// - Não diferencia letras maiúsculas
-//   de minúsculas
-//
-// ==================================================
+// Marca, Local e Quantidade NÃO são campos
+// de pesquisa. São apenas exibidos no resultado.
+// =========================================
 
 
-// ==================================================
+// =========================================
+// VERIFICAÇÃO DO SUPABASE
+// =========================================
+
+function obterClienteSupabase() {
+
+    if (!window.clienteSupabase) {
+        throw new Error("Cliente Supabase não foi inicializado.");
+    }
+
+    return window.clienteSupabase;
+}
+
+
+// =========================================
+// PROTEÇÃO PARA CONSULTA ILIKE
+// =========================================
+// Escapa caracteres especiais usados pelo ILIKE:
+// % = qualquer sequência
+// _ = qualquer caractere
+// \ = caractere de escape
+//
+// Assim, uma pesquisa como "50%" procura
+// literalmente "50%" em vez de usar % como curinga.
+// =========================================
+
+function escaparBuscaILike(valor) {
+
+    return String(valor)
+        .replace(/\\/g, "\\\\")
+        .replace(/%/g, "\\%")
+        .replace(//g, "\\");
+}
+
+
+// =========================================
+// LIMPAR ÁREA DE RESULTADO
+// =========================================
+
+function limparResultado(areaResultado) {
+
+    if (!areaResultado) {
+        return;
+    }
+
+    areaResultado.innerHTML = "";
+}
+
+
+// =========================================
 // PESQUISA POR CÓDIGO
-// ==================================================
-//
-// Agora a pesquisa é feita DIRETAMENTE
-// no Supabase.
-//
-// ==================================================
+// =========================================
 
 async function pesquisarPorCodigo() {
 
-    const busca =
-        document
-            .getElementById("campoPesquisaCodigo")
-            .value
-            .trim();
+    const campo = document.getElementById("campoPesquisaCodigo");
+    const areaResultado = document.getElementById("resultadoPesquisaCodigo");
 
-
-    const areaResultado =
-        document.getElementById(
-            "resultadoPesquisaCodigo"
-        );
-
-
-    // ----------------------------------------------
-    // Verifica se o campo está vazio.
-    // ----------------------------------------------
-
-    if (busca === "") {
-
-        areaResultado.innerHTML =
-            "<p>Digite um código para pesquisar.</p>";
-
+    if (!campo || !areaResultado) {
+        console.error("Elementos da pesquisa por código não encontrados.");
         return;
     }
 
+    const buscaOriginal = campo.value.trim();
 
-    // ----------------------------------------------
-    // Verifica se o cliente Supabase existe.
-    // ----------------------------------------------
-
-    if (!window.clienteSupabase) {
-
-        areaResultado.innerHTML =
-            "<p>🔴 Conexão com o Supabase não encontrada.</p>";
-
+    if (!buscaOriginal) {
+        areaResultado.innerHTML = "<p>Digite um código para pesquisar.</p>";
         return;
     }
 
+    const busca = escaparBuscaILike(buscaOriginal);
 
-    // ----------------------------------------------
-    // Mostra que a pesquisa está sendo realizada.
-    // ----------------------------------------------
+    limparResultado(areaResultado);
 
-    areaResultado.innerHTML =
-        "<p>🔎 Pesquisando...</p>";
-
+    areaResultado.innerHTML = "<p>Pesquisando...</p>";
 
     try {
 
-        // ------------------------------------------
-        // Pesquisa SOMENTE no campo codigo.
-        //
-        // ilike = não diferencia maiúsculas
-        // e minúsculas.
-        //
-        // %texto% = pesquisa parcial.
-        // ------------------------------------------
+        const clienteSupabase = obterClienteSupabase();
 
-        const resposta =
-            await window.clienteSupabase
-                .from("materiais")
-                .select(
-                    "id,codigo,descricao,referencia,marca,local,quantidade"
-                )
-                .ilike(
-                    "codigo",
-                    "%" + busca + "%"
-                )
-                .order(
-                    "codigo",
-                    { ascending: true }
-                );
+        const { data, error } = await clienteSupabase
+            .from("materiais")
+            .select(
+                "id,codigo,descricao,referencia,marca,local,quantidade"
+            )
+            .ilike("codigo", "%" + busca + "%", { escape: "\\" })
+            .order("codigo", { ascending: true });
 
-
-        // ------------------------------------------
-        // Verifica erro do Supabase.
-        // ------------------------------------------
-
-        if (resposta.error) {
-
-            throw resposta.error;
+        if (error) {
+            throw error;
         }
 
-
-        // ------------------------------------------
-        // Exibe os resultados.
-        // ------------------------------------------
-
         exibirResultadosPesquisa(
-            resposta.data || [],
+            data || [],
             areaResultado
         );
 
     } catch (erro) {
 
-        console.error(
-            "Erro na pesquisa por código:",
-            erro
-        );
+        console.error("Erro na pesquisa por código:", erro);
 
         areaResultado.innerHTML =
-            "<p>🔴 Erro ao pesquisar no Supabase.</p>" +
-            "<p>" +
-            (erro.message || "Erro desconhecido.") +
-            "</p>";
+            "<p>Erro ao consultar o Supabase.</p>";
+
     }
 }
 
 
-// ==================================================
+// =========================================
 // PESQUISA POR DESCRIÇÃO
-// ==================================================
+// =========================================
 
 async function pesquisarPorDescricao() {
 
-    const busca =
-        document
-            .getElementById("campoPesquisaDescricao")
-            .value
-            .trim();
+    const campo = document.getElementById("campoPesquisaDescricao");
+    const areaResultado = document.getElementById("resultadoPesquisaDescricao");
 
-
-    const areaResultado =
-        document.getElementById(
-            "resultadoPesquisaDescricao"
-        );
-
-
-    // ----------------------------------------------
-    // Verifica se o campo está vazio.
-    // ----------------------------------------------
-
-    if (busca === "") {
-
-        areaResultado.innerHTML =
-            "<p>Digite uma descrição para pesquisar.</p>";
-
+    if (!campo || !areaResultado) {
+        console.error("Elementos da pesquisa por descrição não encontrados.");
         return;
     }
 
+    const buscaOriginal = campo.value.trim();
 
-    // ----------------------------------------------
-    // Verifica se o cliente Supabase existe.
-    // ----------------------------------------------
-
-    if (!window.clienteSupabase) {
-
-        areaResultado.innerHTML =
-            "<p>🔴 Conexão com o Supabase não encontrada.</p>";
-
+    if (!buscaOriginal) {
+        areaResultado.innerHTML = "<p>Digite uma descrição para pesquisar.</p>";
         return;
     }
 
+    const busca = escaparBuscaILike(buscaOriginal);
 
-    areaResultado.innerHTML =
-        "<p>🔎 Pesquisando...</p>";
+    limparResultado(areaResultado);
 
+    areaResultado.innerHTML = "<p>Pesquisando...</p>";
 
     try {
 
-        // ------------------------------------------
-        // Pesquisa SOMENTE na descrição.
-        // ------------------------------------------
+        const clienteSupabase = obterClienteSupabase();
 
-        const resposta =
-            await window.clienteSupabase
-                .from("materiais")
-                .select(
-                    "id,codigo,descricao,referencia,marca,local,quantidade"
-                )
-                .ilike(
-                    "descricao",
-                    "%" + busca + "%"
-                )
-                .order(
-                    "descricao",
-                    { ascending: true }
-                );
+        const { data, error } = await clienteSupabase
+            .from("materiais")
+            .select(
+                "id,codigo,descricao,referencia,marca,local,quantidade"
+            )
+            .ilike("descricao", "%" + busca + "%", { escape: "\\" })
+            .order("descricao", { ascending: true });
 
-
-        if (resposta.error) {
-
-            throw resposta.error;
+        if (error) {
+            throw error;
         }
 
-
         exibirResultadosPesquisa(
-            resposta.data || [],
+            data || [],
             areaResultado
         );
 
     } catch (erro) {
 
-        console.error(
-            "Erro na pesquisa por descrição:",
-            erro
-        );
+        console.error("Erro na pesquisa por descrição:", erro);
 
         areaResultado.innerHTML =
-            "<p>🔴 Erro ao pesquisar no Supabase.</p>" +
-            "<p>" +
-            (erro.message || "Erro desconhecido.") +
-            "</p>";
+            "<p>Erro ao consultar o Supabase.</p>";
+
     }
 }
 
 
-// ==================================================
+// =========================================
 // PESQUISA POR REFERÊNCIA
-// ==================================================
+// =========================================
 
 async function pesquisarPorReferencia() {
 
-    const busca =
-        document
-            .getElementById("campoPesquisaReferencia")
-            .value
-            .trim();
+    const campo = document.getElementById("campoPesquisaReferencia");
+    const areaResultado = document.getElementById("resultadoPesquisaReferencia");
 
-
-    const areaResultado =
-        document.getElementById(
-            "resultadoPesquisaReferencia"
-        );
-
-
-    // ----------------------------------------------
-    // Verifica se o campo está vazio.
-    // ----------------------------------------------
-
-    if (busca === "") {
-
-        areaResultado.innerHTML =
-            "<p>Digite uma referência para pesquisar.</p>";
-
+    if (!campo || !areaResultado) {
+        console.error("Elementos da pesquisa por referência não encontrados.");
         return;
     }
 
+    const buscaOriginal = campo.value.trim();
 
-    // ----------------------------------------------
-    // Verifica se o cliente Supabase existe.
-    // ----------------------------------------------
-
-    if (!window.clienteSupabase) {
-
-        areaResultado.innerHTML =
-            "<p>🔴 Conexão com o Supabase não encontrada.</p>";
-
+    if (!buscaOriginal) {
+        areaResultado.innerHTML = "<p>Digite uma referência para pesquisar.</p>";
         return;
     }
 
+    const busca = escaparBuscaILike(buscaOriginal);
 
-    areaResultado.innerHTML =
-        "<p>🔎 Pesquisando...</p>";
+    limparResultado(areaResultado);
 
+    areaResultado.innerHTML = "<p>Pesquisando...</p>";
 
     try {
 
-        // ------------------------------------------
-        // Pesquisa SOMENTE na referência.
-        //
-        // A coluna referencia possui valores null
-        // em alguns materiais.
-        //
-        // O Supabase simplesmente não retornará
-        // esses registros quando procurarmos texto.
-        // ------------------------------------------
+        const clienteSupabase = obterClienteSupabase();
 
-        const resposta =
-            await window.clienteSupabase
-                .from("materiais")
-                .select(
-                    "id,codigo,descricao,referencia,marca,local,quantidade"
-                )
-                .ilike(
-                    "referencia",
-                    "%" + busca + "%"
-                )
-                .order(
-                    "referencia",
-                    { ascending: true }
-                );
+        const { data, error } = await clienteSupabase
+            .from("materiais")
+            .select(
+                "id,codigo,descricao,referencia,marca,local,quantidade"
+            )
+            .ilike("referencia", "%" + busca + "%", { escape: "\\" })
+            .order("referencia", { ascending: true });
 
-
-        if (resposta.error) {
-
-            throw resposta.error;
+        if (error) {
+            throw error;
         }
 
-
         exibirResultadosPesquisa(
-            resposta.data || [],
+            data || [],
             areaResultado
         );
 
     } catch (erro) {
 
-        console.error(
-            "Erro na pesquisa por referência:",
-            erro
-        );
+        console.error("Erro na pesquisa por referência:", erro);
 
         areaResultado.innerHTML =
-            "<p>🔴 Erro ao pesquisar no Supabase.</p>" +
-            "<p>" +
-            (erro.message || "Erro desconhecido.") +
-            "</p>";
+            "<p>Erro ao consultar o Supabase.</p>";
+
     }
 }
 
 
-// ==================================================
-// EXIBIR RESULTADOS DA PESQUISA
-// ==================================================
-//
-// Essa função continua sendo responsável
-// SOMENTE pela apresentação dos resultados.
-//
-// Agora ela recebe os registros vindos
-// diretamente do Supabase.
-//
-// ==================================================
+// =========================================
+// EXIBIR RESULTADOS
+// =========================================
 
-function exibirResultadosPesquisa(
-    resultados,
-    areaResultado
-) {
+function exibirResultadosPesquisa(resultados, areaResultado) {
 
+    if (!areaResultado) {
+        return;
+    }
 
-    // ----------------------------------------------
-    // Nenhum resultado encontrado.
-    // ----------------------------------------------
+    limparResultado(areaResultado);
 
-    if (resultados.length === 0) {
+    if (!Array.isArray(resultados) || resultados.length === 0) {
 
         areaResultado.innerHTML =
             "<p>Nenhum material encontrado.</p>";
@@ -387,58 +258,73 @@ function exibirResultadosPesquisa(
         return;
     }
 
+    const fragmento = document.createDocumentFragment();
 
-    // ----------------------------------------------
-    // Limpa resultados anteriores.
-    // ----------------------------------------------
+    resultados.forEach(function (material) {
 
-    areaResultado.innerHTML = "";
+        const bloco = document.createElement("div");
 
+        const linha = document.createElement("hr");
 
-    // ----------------------------------------------
-    // Percorre os materiais encontrados.
-    // ----------------------------------------------
+        const titulo = document.createElement("h3");
+        titulo.textContent =
+            material.descricao || "Material";
 
-    resultados.forEach(material => {
+        const codigo = document.createElement("p");
+        codigo.innerHTML = "<strong>Código:</strong> ";
+        codigo.appendChild(
+            document.createTextNode(
+                material.codigo ?? "-"
+            )
+        );
 
+        const referencia = document.createElement("p");
+        referencia.innerHTML = "<strong>Referência:</strong> ";
+        referencia.appendChild(
+            document.createTextNode(
+                material.referencia ?? "-"
+            )
+        );
 
-        // ------------------------------------------
-        // Monta o resultado do material.
-        // ------------------------------------------
+        const local = document.createElement("p");
+        local.innerHTML = "<strong>Local:</strong> ";
+        local.appendChild(
+            document.createTextNode(
+                material.local ?? "-"
+            )
+        );
 
-        areaResultado.innerHTML += `
+        const marca = document.createElement("p");
+        marca.innerHTML = "<strong>Marca:</strong> ";
+        marca.appendChild(
+            document.createTextNode(
+                material.marca ?? "-"
+            )
+        );
 
-            <hr>
+        const quantidade = document.createElement("p");
+        quantidade.innerHTML = "<strong>Quantidade:</strong> ";
+        quantidade.appendChild(
+            document.createTextNode(
+                material.quantidade ?? "-"
+            )
+        );
 
-            <h3>
-                ${material.descricao || "Material"}
-            </h3>
+        bloco.appendChild(linha);
+        bloco.appendChild(titulo);
+        bloco.appendChild(codigo);
+        bloco.appendChild(referencia);
+        bloco.appendChild(local);
+        bloco.appendChild(marca);
+        bloco.appendChild(quantidade);
 
-            <p>
-                <strong>Código:</strong>
-                ${material.codigo || "-"}
-            </p>
-
-            <p>
-                <strong>Referência:</strong>
-                ${material.referencia || "-"}
-            </p>
-
-            <p>
-                <strong>Local:</strong>
-                ${material.local || "-"}
-            </p>
-
-            <p>
-                <strong>Marca:</strong>
-                ${material.marca || "-"}
-            </p>
-
-            <p>
-                <strong>Quantidade:</strong>
-                ${material.quantidade ?? "-"}
-            </p>
-
-        `;
+        fragmento.appendChild(bloco);
     });
+
+    areaResultado.appendChild(fragmento);
 }
+
+
+// =========================================
+// FIM - PESQUISA
+// =========================================
