@@ -394,11 +394,51 @@ function mostrarErrosSupabase(
 
 
     // ========================================================
+    // BOTÃO FECHAR
+    // ========================================================
+
+    html +=
+        "<br>" +
+        "<button type=\"button\" " +
+        "onclick=\"fecharErrosSupabase()\">" +
+        "Fechar" +
+        "</button>";
+
+
+    // ========================================================
     // INSERIR RESULTADO NA TELA
     // ========================================================
 
     area.innerHTML =
         html;
+
+}
+
+
+
+// ============================================================
+// FUNÇÃO: fecharErrosSupabase()
+// ============================================================
+//
+// OBJETIVO:
+//
+// Fechar/remover da tela o painel de problemas
+// apresentado pela função mostrarErrosSupabase().
+//
+// ============================================================
+
+function fecharErrosSupabase() {
+
+    const area =
+        document.getElementById(
+            "resultadoVerificacaoSupabase"
+        );
+
+    if (!area) {
+        return;
+    }
+
+    area.remove();
 
 }
 
@@ -807,7 +847,6 @@ async function testarLeituraSupabase() {
                         // =====================================
                         // VERIFICAR DUPLICIDADE
                         // =====================================
-
                         if (
                             codigosEncontrados.has(
                                 codigo
