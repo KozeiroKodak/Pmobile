@@ -2079,7 +2079,6 @@ async function importarParaSupabase(
         if (resultado) {
 
             resultado.innerHTML +=
-
                 "<p>☁️ Conectando ao Supabase...</p>";
 
         }
@@ -2130,11 +2129,42 @@ async function importarParaSupabase(
         ) {
 
             const lote =
-                materiais.slice(
-                    inicio,
-                    inicio +
-                    TAMANHO_LOTE_SUPABASE
-                );
+                materiais
+                    .slice(
+                        inicio,
+                        inicio +
+                        TAMANHO_LOTE_SUPABASE
+                    )
+                    .map(material => ({
+
+                        codigo:
+                            material.codigo,
+
+                        descricao:
+                            material.descricao,
+
+                        referencia:
+                            material.referencia,
+
+                        marca:
+                            material.marca,
+
+                        local:
+                            material.local,
+
+                        quantidade:
+                            material.quantidade,
+
+                        quantidade_reservada:
+                            material.quantidadeReservada,
+
+                        disponivel:
+                            material.disponivel,
+
+                        ultima_entrada:
+                            material.ultimaEntrada
+
+                    }));
 
 
             const {
@@ -2169,7 +2199,6 @@ async function importarParaSupabase(
             if (resultado) {
 
                 resultado.innerHTML +=
-
                     "<p>☁️ Enviados " +
 
                     enviados
@@ -2203,13 +2232,13 @@ async function importarParaSupabase(
         if (resultado) {
 
             resultado.innerHTML +=
-
                 "<p>✅ Inventário enviado ao Supabase.</p>";
 
         }
 
 
         return true;
+
 
     } finally {
 
@@ -2219,8 +2248,6 @@ async function importarParaSupabase(
     }
 
 }
-
-
 // ============================================================
 // FUNÇÃO: importarExcel
 // ============================================================
