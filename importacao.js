@@ -800,8 +800,131 @@ function criarMaterial(linha) {
 
 function atualizarDiagnosticoTela() {
 
-    // O diagnóstico continua sendo calculado internamente.
-    // A interface principal utiliza somente a barra de progresso.
+    const resultado =
+        document.getElementById(
+            "resultadoImportacao"
+        );
+
+
+    if (!resultado) {
+
+        return;
+
+    }
+
+
+    const total =
+        diagnosticoImportacao.total;
+
+    const observacoes =
+        diagnosticoImportacao
+            .observacoes
+            .length;
+
+    const erros =
+        diagnosticoImportacao
+            .erros
+            .length;
+
+
+    resultado.innerHTML +=
+
+        "<hr>" +
+
+        "<h3>🔎 Diagnóstico da importação</h3>" +
+
+        "<p>" +
+        total.toLocaleString("pt-BR") +
+        " materiais verificados.</p>" +
+
+        "<p>" +
+        (observacoes + erros).toLocaleString("pt-BR") +
+        " problemas encontrados.</p>";
+
+
+    if (
+        observacoes > 0 ||
+        erros > 0
+    ) {
+
+        resultado.innerHTML +=
+
+            "<p><strong>Detalhes:</strong></p>" +
+
+            "<ul>";
+
+
+        diagnosticoImportacao
+            .observacoes
+            .forEach(function (item) {
+
+                resultado.innerHTML +=
+
+                    "<li>" +
+                    "ID " +
+                    item.registro +
+                    ": " +
+                    item.mensagem +
+                    "</li>";
+
+            });
+
+
+        diagnosticoImportacao
+            .erros
+            .forEach(function (item) {
+
+                resultado.innerHTML +=
+
+                    "<li>" +
+                    "ID " +
+                    item.registro +
+                    ": " +
+                    item.mensagem +
+                    "</li>";
+
+            });
+
+
+        resultado.innerHTML +=
+
+            "</ul>";
+
+    }
+
+
+    resultado.innerHTML +=
+
+        "<br>" +
+
+        "<button type=\"button\" " +
+        "onclick=\"fecharDiagnosticoImportacao()\">" +
+        "Fechar" +
+        "</button>";
+
+}
+
+
+// ============================================================
+// FUNÇÃO: fecharDiagnosticoImportacao
+// ============================================================
+
+function fecharDiagnosticoImportacao() {
+
+    const resultado =
+        document.getElementById(
+            "resultadoImportacao"
+        );
+
+
+    if (!resultado) {
+
+        return;
+
+    }
+
+
+    resultado.innerHTML = "";
 
 }
 
