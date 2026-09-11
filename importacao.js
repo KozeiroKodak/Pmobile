@@ -790,11 +790,16 @@ function criarMaterial(linha) {
     };
 
 }
-// ============================================================
+//============================================================
 // FUNÇÃO: atualizarDiagnosticoTela
 // ============================================================
 //
 // Mostra o resultado do diagnóstico.
+//
+// IMPORTANTE:
+// Não renderiza milhares de observações na tela.
+// Mostra somente uma quantidade limitada de detalhes,
+// evitando travamento do navegador.
 //
 // ============================================================
 
@@ -816,10 +821,12 @@ function atualizarDiagnosticoTela() {
     const total =
         diagnosticoImportacao.total;
 
+
     const observacoes =
         diagnosticoImportacao
             .observacoes
             .length;
+
 
     const erros =
         diagnosticoImportacao
@@ -827,7 +834,14 @@ function atualizarDiagnosticoTela() {
             .length;
 
 
-    resultado.innerHTML +=
+    const LIMITE_DETALHES = 50;
+
+
+    // ========================================================
+    // INÍCIO DO RESULTADO
+    // ========================================================
+
+    let html =
 
         "<hr>" +
 
@@ -839,61 +853,159 @@ function atualizarDiagnosticoTela() {
 
         "<p>" +
         (observacoes + erros).toLocaleString("pt-BR") +
-        " problemas encontrados.</p>";
+        " observações/erros encontrados.</p>";
 
 
-    if (
-        observacoes > 0 ||
-        erros > 0
-    ) {
+    // ========================================================
+    // ERROS
+    // ========================================================
 
-        resultado.innerHTML +=
+    if (erros > 0) {
+
+        html +=
+
+            "<p><strong>🔴 Erros: " +
+            erros.toLocaleString("pt-BR") +
+            "</strong></p>";
+
+    } else {
+
+        html +=
+
+            "<p><strong>🟢 Erros: 0</strong></p>";
+
+    }
+
+
+    // ========================================================
+    // OBSERVAÇÕES
+    // ========================================================
+
+    if (observacoes > 0) {
+
+        html +=
+
+            "<p><strong>🟡 Observações: " +
+            observacoes.toLocaleString("pt-BR") +
+            "</strong></p>";
+
+    } else {
+
+        html +=
+
+            "<p><strong>🟢 Observações: 0</strong></p>";
+
+    }
+
+
+    // ========================================================
+    // DETALHES
+    // ========================================================
+
+    const detalhes = [
+
+        ...diagnosticoImportacao
+            .erros
+            .map(function (item) {
+
+                return {
+
+                    tipo: "🔴",
+                    item: item
+
+                };
+
+            }),
+
+        ...diagnosticoImportacao
+            .observacoes
+            .map(function (item) {
+
+                return {
+
+                    tipo: "🟡",
+                    item: item
+
+                };
+
+            })
+
+    ];
+
+
+    if (detalhes.length > 0) {
+
+        html +=
 
             "<p><strong>Detalhes:</strong></p>" +
 
             "<ul>";
 
 
-        diagnosticoImportacao
-            .observacoes
-            .forEach(function (item) {
-
-                resultado.innerHTML +=
-
-                    "<li>" +
-                    "ID " +
-                    item.registro +
-                    ": " +
-                    item.mensagem +
-                    "</li>";
-
-            });
+        const quantidadeExibida =
+            Math.min(
+                detalhes.length,
+                LIMITE_DETALHES
+            );
 
 
-        diagnosticoImportacao
-            .erros
-            .forEach(function (item) {
+        for (
+            let i = 0;
+            i < quantidadeExibida;
+            i++
+        ) {
 
-                resultado.innerHTML +=
-
-                    "<li>" +
-                    "ID " +
-                    item.registro +
-                    ": " +
-                    item.mensagem +
-                    "</li>";
-
-            });
+            const detalhe =
+                detalhes[i];
 
 
-        resultado.innerHTML +=
+            html +=
+
+                "<li>" +
+                detalhe.tipo +
+                " Registro " +
+                detalhe.item.registro +
+                ": " +
+                detalhe.item.mensagem +
+                "</li>";
+
+        }
+
+
+        html +=
 
             "</ul>";
+
+
+        // ----------------------------------------------------
+        // AVISO SOBRE DETALHES OCULTOS
+        // ----------------------------------------------------
+
+        if (
+            detalhes.length >
+            LIMITE_DETALHES
+        ) {
+
+            html +=
+
+                "<p><em>" +
+                "Mostrando os primeiros " +
+                LIMITE_DETALHES +
+                " detalhes de " +
+                detalhes.length.toLocaleString("pt-BR") +
+                "." +
+                "</em></p>";
+
+        }
 
     }
 
 
-    resultado.innerHTML +=
+    // ========================================================
+    // BOTÃO FECHAR
+    // ========================================================
+
+    html +=
 
         "<br>" +
 
@@ -902,9 +1014,15 @@ function atualizarDiagnosticoTela() {
         "Fechar" +
         "</button>";
 
+
+    // ========================================================
+    // INSERIR RESULTADO DE UMA VEZ
+    // ========================================================
+
+    resultado.innerHTML =
+        html;
+
 }
-
-
 // ============================================================
 // FUNÇÃO: fecharDiagnosticoImportacao
 // ============================================================
