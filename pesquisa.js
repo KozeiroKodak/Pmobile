@@ -43,7 +43,7 @@ function escaparBuscaILike(valor) {
     return String(valor)
         .replace(/\\/g, "\\\\")
         .replace(/%/g, "\\%")
-        .replace(//g, "\\");
+        .replace(/_/g, "\\_");
 }
 
 
