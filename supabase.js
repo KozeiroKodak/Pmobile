@@ -1163,3 +1163,97 @@ function permitirAtualizacaoNavegador() {
     );
 
 }
+// ============================================================
+// FUNÇÃO: limparMateriaisSupabase()
+// ============================================================
+//
+// OBJETIVO:
+//
+// Remover todos os materiais importados da tabela:
+//
+//     public.materiais
+//
+// IMPORTANTE:
+//
+// Esta função NÃO remove:
+// - usuários
+// - conferências
+// - histórico de importações
+// - dados do IndexedDB
+//
+// Ela atua somente na tabela "materiais" do Supabase.
+//
+// ============================================================
+
+async function limparMateriaisSupabase() {
+
+    const confirmar = confirm(
+        "⚠️ ATENÇÃO!\n\n" +
+        "Isso irá apagar TODOS os materiais importados " +
+        "do Supabase.\n\n" +
+        "Deseja continuar?"
+    );
+
+    if (!confirmar) {
+        return;
+    }
+
+    mostrarStatusSupabase(
+        "🟡 Limpando materiais do Supabase..."
+    );
+
+    try {
+
+        const { error } =
+            await window.clienteSupabase
+                .from("materiais")
+                .delete()
+                .neq("id", 0);
+
+        if (error) {
+
+            console.error(
+                "❌ Erro ao limpar materiais:",
+                error
+            );
+
+            mostrarStatusSupabase(
+                "🔴 Erro ao limpar materiais."
+            );
+
+            alert(
+                "❌ Não foi possível limpar os materiais.\n\n" +
+                error.message
+            );
+
+            return;
+        }
+
+        console.log(
+            "✅ Todos os materiais foram removidos do Supabase."
+        );
+
+        mostrarStatusSupabase(
+            "🟢 Materiais do Supabase limpos."
+        );
+
+        alert(
+            "✅ Materiais importados removidos com sucesso!"
+        );
+
+    } catch (erro) {
+
+        console.error(
+            "❌ Erro inesperado ao limpar materiais:",
+            erro
+        );
+
+        mostrarStatusSupabase(
+            "🔴 Erro inesperado na limpeza."
+        );
+
+        alert(
+            "❌ Ocorreu um erro ao limpar os materiais."
+        );
+    }
+}
